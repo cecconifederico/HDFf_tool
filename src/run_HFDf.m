@@ -1,5 +1,5 @@
-%% RUN for Cumulative Frechet Distance 
-%% (Saves HFD (K) for each channel up to kmax) 
+% RUN for Cumulative Frechet Distance 
+% (Saves HFD (K) for each channel up to kmax) 
 clearvars
 clc
 close all
@@ -18,7 +18,7 @@ datasetList = {'A1', 'M1', 'S1'};
 
 HFDf_totale_1 = table();
 
-%% Loop to load data: A1, M1, S1
+% Loop to load data: A1, M1, S1
 for d = 1:length(datasetList)
     currentDS = datasetList{d};
     fprintf('\n--- Processing Dataset: %s ---\n', currentDS);
