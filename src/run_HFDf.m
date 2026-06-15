@@ -1,5 +1,5 @@
 %% RUN for Cumulative Fréchet Distance 
-%% (Saves HFD(K) for each channel up to kmax) 
+%% (Saves HFD(K) for each channel up to kmax)
 clearvars
 clc
 close all
