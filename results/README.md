@@ -76,7 +76,6 @@ The first components (Electrode Type, Subject ID, and local Electrode index) fol
 ---
 
 ## 4. Methodological Notes on `HFD_vs_K` Calculation
-1. **Segment Median Windowing:** For each individual recording channel containing 13,600 data points per session, the pipeline computes the mathematical median computed over all individual sub-segment $HFD_f$ values calculated for that channel.
-2. **Statistical Quality Control:** If a specific channel displays a poor linear regression fit ($R^2 < 0.90$) due to experimental artifacts or high-frequency noise, its `HFD_vs_K` array entries are safely forced to `NaN` placeholders to protect downstream statistical comparisons from anomalous outliers.
+1. **Statistical Quality Control:** If a specific channel displays a poor linear regression fit ($R^2 < 0.90$) due to experimental artifacts or high-frequency noise, its `HFD_vs_K` array entries are safely forced to `NaN` placeholders to protect downstream statistical comparisons from anomalous outliers.
   
-t
+
