@@ -2,7 +2,7 @@
 
 This repository contains MATLAB code for the computation of a Higuchi-like Fractal Dimension modified with the discrete Frechet distance, referred to as HFDf.
 
-The tool is designed for the analysis of sEEG signals from different cortical areas and physiological states. The main function computes HFDf from a one-dimensional signal, while the run scripts apply the method to wakefulness and sleep-state datasets.
+The tool is designed for the analysis of sEEG signals from different cortical areas and physiological states. The main function implements the HFDf computation, while the run scripts apply the method to wakefulness and sleep-state datasets.
 
 ## Repository structure
 
