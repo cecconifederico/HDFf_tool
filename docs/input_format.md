@@ -1,6 +1,7 @@
 # Input Format
 
 This document describes the expected input format for the sEEG data used by the example analysis scripts.
+The data used in this project are derived from the public MNI sEEG database from the Montreal Neurological Institute
 
 ## Data files
 
@@ -122,8 +123,10 @@ For wakefulness data, channel names may contain a final `W`, for example:
 GD029Rd10W
 ```
 
-## Missing or invalid values
+## Gap handling
 
-Non-finite values, such as `NaN` or `Inf`, are excluded from the analysis.
+Some signals include additional padding or gap samples.
 
-The scripts also detect padding or gap regions and separate the signal into valid segments before computing HFDf.
+For continuous signals, the analysis is performed on the full valid signal segment.
+
+For signals containing interruptions, the script detects and removes the gap regions before computing HFDf. The remaining valid signal portions are analyzed as separate segments.
