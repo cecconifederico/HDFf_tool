@@ -25,7 +25,7 @@ HDFf_tool/
 ## Main files
 
 - `src/fractaldim_frechet.m`: main MATLAB function used to compute HFDf.
-- `src/run_HFDf.m`: script used to run the HFDf analysis on wakefulness data.
+- `src/run_HFDf_awake.m`: script used to run the HFDf analysis on wakefulness data.
 - `src/run_HFDf_sleep.m`: script used to run the HFDf analysis on sleep-state data.
 - `docs/input_format.md`: description of the expected input data format.
 - `docs/pseudocode.md`: pseudocode and description of the HFDf computation.
