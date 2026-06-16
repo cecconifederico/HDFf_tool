@@ -68,10 +68,10 @@ The first components (Electrode Type, Subject ID, and local Electrode index) fol
     * **`R`** ➔ **REM (Rapid Eye Movement):** Desynchronized paradoxical sleep phase. Maps to the `HFDf_sleep` variable.
 
 ### Examples of Automated Parsing:
-- `GD013Lu_8W` ➔ Type: `GD`, Subject: `013`, Sensor: `Lu_8`, State: **Awake** (Stored in `HFDf_awake`)
-- `GD013Lu_8N` ➔ Type: `GD`, Subject: `013`, Sensor: `Lu_8`, State: **N2 Sleep** (Stored in `HFDf_sleep`)
-- `GD013Lu_8D` ➔ Type: `GD`, Subject: `013`, Sensor: `Lu_8`, State: **N3 Sleep** (Stored in `HFDf_sleep`)
-- `GD013Lu_8R` ➔ Type: `GD`, Subject: `013`, Sensor: `Lu_8`, State: **REM Sleep** (Stored in `HFDf_sleep`)
+- `GD013Lu_8W` ➔ Type: `GD`, Subject: `013`, Sensor: `Lu_8`, State:W **Awake** (Stored in `HFDf_awake`)
+- `GD029Rd10N` ➔ Type: `GD`, Subject: `029`, Sensor: `Rd10`, State:N **N2 Sleep** (Stored in `HFDf_sleep`)
+- `GD029Rd10D` ➔ Type: `GD`, Subject: `029`, Sensor: `Rd10`, State:D **N3 Sleep** (Stored in `HFDf_sleep`)
+- `GD009Rj08R` ➔ Type: `GD`, Subject: `009`, Sensor: `Rj08`, State:R, **REM Sleep** (Stored in `HFDf_sleep`)
 
 ---
 
