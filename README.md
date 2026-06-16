@@ -18,7 +18,7 @@ HDFf_tool/
 │   └── README.md
 └── src/
     ├── fractaldim_frechet.m
-    ├── run_HFDf.m
+    ├── run_HFDf_awake.m
     └── run_HFDf_sleep.m
 ```
 
