@@ -71,7 +71,7 @@ begin
 end;
 
 
-Procedure DISCRETE_FRECHET_DIST_1D(P, Q);
+Procedure DISCRETE_FRECHET_DIST(P, Q);
 begin
     // 1. Inputs: P (Reference Curve), Q (Subsampled Curve)
     // 2. Output: d (Discrete Fréchet coupling distance)
