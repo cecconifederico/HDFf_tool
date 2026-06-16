@@ -16,7 +16,7 @@ minPtsFit = 8;  % Minimum valid points to perform the linear fit
 
 datasetList = {'A1', 'M1', 'S1'};
 
-HFDf_totale = table();
+HFDf_awake = table();
 
 % Loop to load data: A1, M1, S1
 for d = 1:length(datasetList)
@@ -133,7 +133,7 @@ for d = 1:length(datasetList)
                 {HFD_median_curve}, {K_range}, ...
                 'VariableNames', {'Area','Channel','ElectrodeType','SubjectID','Electrode','HFD_vs_K','K_range'});
 
-            HFDf_totale = [HFDf_totale; res]; 
+            HFDf_awake = [HFDf_awake; res]; 
 
             fprintf('Channel %s completed: HFD(K) curve saved (nValidSeg=%d)\n', ...
                 nomeAttuale, nValidSeg);
