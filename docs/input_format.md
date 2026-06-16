@@ -1,6 +1,6 @@
 # Input Format
 
-This document describes the expected input format for the EEG/sEEG data used by the example analysis scripts.
+This document describes the expected input format for the sEEG data used by the example analysis scripts.
 
 ## Data files
 
