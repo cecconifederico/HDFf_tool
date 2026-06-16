@@ -17,7 +17,7 @@ addpath('src')
 To run the wakefulness analysis, execute:
 
 ```matlab
-run_HFDf
+run_HFDf_awake
 ```
 
 When prompted, select the input files containing the wakefulness data.
@@ -67,7 +67,7 @@ The scripts save the output as MATLAB `.mat` files.
 For the wakefulness analysis, the output file is:
 
 ```text
-HFDf_totale.mat
+HFDf_awake.mat
 ```
 
 For the sleep-state analysis, the output file is:
