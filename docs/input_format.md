@@ -1,7 +1,7 @@
 # Input Format
 
 This document describes the expected input format for the sEEG data used by the example analysis scripts.
-The data used in this project are derived from the public MNI sEEG database from the Montreal Neurological Institute
+The data used in this analysis were obtained from the public database of the Montreal Neurological Institute.
 
 ## Data files
 
