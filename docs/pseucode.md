@@ -1,6 +1,6 @@
 # Algorithmic Specification for HFDf Core Functions
 
-This reference block defines the mathematical procedure and algorithmic steps for estimating the Higuchi Fractal Dimension via discrete Fréchet distance (HFDf)
+This reference block describes the mathematical procedure and algorithmic steps for estimating the Higuchi Fractal Dimension via discrete Fréchet distance (HFDf)
 
 ---
 
