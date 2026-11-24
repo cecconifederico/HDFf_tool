@@ -30,7 +30,7 @@ if isequal(sleepFolder,0)
     error('Nessuna cartella selezionata.');
 end
 
-NCDppmdH_sleep_noBase = table('Size',[0 9], ...
+HFDncd_sleep = table('Size',[0 9], ...
     'VariableTypes',repmat({'cell'},1,9), ...
     'VariableNames',{'Area','State','File','Channel','ElectrodeType', ...
     'SubjectID','Electrode','NCD_vs_K','K_range'});
@@ -125,8 +125,8 @@ for st = 1:numel(states)
                     res = table({currentDS}, {currentState}, {fileName}, ...
                         {nomeAttuale}, {tipo}, {soggetto}, {elettrodo}, ...
                         {NCD_median_curve}, {K_range}, ...
-                        'VariableNames', NCDppmdH_sleep_noBase.Properties.VariableNames);
-                    NCDppmdH_sleep_noBase = [NCDppmdH_sleep_noBase; res]; %#ok<AGROW>
+                        'VariableNames', HFDncd_sleep.Properties.VariableNames);
+                    HFDncd_sleep = [HFDncd_sleep; res]; %#ok<AGROW>
                     fprintf('Canale %s completato (nSegValidi=%d)\n', nomeAttuale, nValidSeg);
                 else
                     fprintf('Canale %s: nessuna curva NCD valida\n', nomeAttuale);
@@ -136,18 +136,18 @@ for st = 1:numel(states)
     end
 end
 
-if isempty(NCDppmdH_sleep_noBase)
+if isempty(HFDncd_sleep)
     error('Nessuna curva NCD calcolata: controlla i file e pyenv.');
 end
 % Avviso per canali ripetuti nello stesso stato e area (es. CSV e XLSX duplicati).
-[G,ga,gs,gc] = findgroups(NCDppmdH_sleep_noBase.Area, ...
-    NCDppmdH_sleep_noBase.State, NCDppmdH_sleep_noBase.Channel);
-counts = splitapply(@numel, NCDppmdH_sleep_noBase.Channel, G);
+[G,ga,gs,gc] = findgroups(HFDncd_sleep.Area, ...
+    HFDncd_sleep.State, HFDncd_sleep.Channel);
+counts = splitapply(@numel, HFDncd_sleep.Channel, G);
 for i = find(counts > 1)'
     warning('Canale duplicato: %s / %s / %s. Controllare i file di origine.', ...
         ga{i}, gs{i}, gc{i});
 end
-save('NCDppmdH_sleep_noBase.mat', 'NCDppmdH_sleep_noBase', ...
+save('NCDppmdH_sleep_noBase.mat', 'HFDncd_sleep', ...
     'ks', 'fc_Hz', 'n_bits', 'riportaBase', 'Fs');
 
 %% --- ANALISI PER STATO: stesso codice della veglia ---
@@ -159,7 +159,7 @@ riepilogo_sleep = table();
 for st = 1:numel(states)
     statoLabel = states{st};
     fprintf('\n========== %s ==========\n', statoLabel);
-    Tstate = NCDppmdH_sleep_noBase(strcmp(NCDppmdH_sleep_noBase.State, statoLabel), :);
+    Tstate = HFDncd_sleep(strcmp(HFDncd_sleep.State, statoLabel), :);
     % Vista di lavoro con le stesse sette colonne e gli stessi nomi della veglia.
     % La tabella salvata mantiene State e File e lo schema originale del sonno.
     T = Tstate(:, {'Area','Channel','ElectrodeType','SubjectID','Electrode','NCD_vs_K','K_range'});
