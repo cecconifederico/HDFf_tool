@@ -1,4 +1,4 @@
-# HDFf_tool
+# HFDf_tool
 
 This repository contains MATLAB code for the computation of a Higuchi-like Fractal Dimension modified with the discrete Frechet distance, referred to as HFDf.
 
