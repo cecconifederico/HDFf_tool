@@ -1,54 +1,57 @@
-% RUN for Cumulative Frechet Distance 
-% (Saves HFD (K) for each channel up to kmax) 
+%% RUN: NCD with PPMd-H on anti-aliased, decimated signals (awake)
+% For each segment and each decimation factor k in ks: causal Butterworth
+% low-pass filter (cutoff fc_Hz) -> downsampling by k -> NCD(P,Q) using PPMd-H.
+% Requires: ncd_ppmd_bt.m and bw_lowpass_causal.m in the same folder,
+%           a pyenv with Python 3.9-3.12 and pyppmd installed.
 clearvars
 clc
 close all
 
-% --- PROTOCOL PARAMETERS ---
-Fs = 200; 
+%% --- PARAMETERS ---
+Fs          = 200;                % Sampling frequency (Hz); EEG already low-passed at 80 Hz
+ks          = [2 5 10 20 33 67];  % Decimation factors
+fc_Hz       = [35 14 7 3.5 2 1];  % Butterworth cutoff for each k (Hz)
+n_bits      = 3;                  % Quantization: 2^3 = 8 amplitude levels
+reportBase  = true;               % true: Q is mapped back to the time base of P
+minSegLen   = 400;                % Minimum segment length (samples)
 
-kmax = 35;
-kmin = 2;
-K_range = kmin:kmax;
-
-alpha = 2;      % Function parameter 
-minPtsFit = 8;  % Minimum valid points to perform the linear fit 
-
+K_range     = ks;
 datasetList = {'A1', 'M1', 'S1'};
+NCD_awake   = table();
+fileUsed    = struct();
 
-HFDf_awake = table();
-
-% Loop to load data: A1, M1, S1
+%% --- DATA LOADING AND NCD COMPUTATION ---
 for d = 1:length(datasetList)
     currentDS = datasetList{d};
     fprintf('\n--- Processing Dataset: %s ---\n', currentDS);
 
-    msg = sprintf('Select the CSV file for %s', currentDS);
-    [file, path] = uigetfile('*.csv', msg);
-    if isequal(file,0)
+    msg = sprintf('Select the file for %s', currentDS);
+    [file, path] = uigetfile({'*.csv;*.xlsx', 'Data files (*.csv, *.xlsx)'}, msg);
+    if isequal(file, 0)
         fprintf('Skipping dataset %s (selection canceled)\n', currentDS);
         continue;
     end
+    fileUsed.(currentDS) = file;
 
     data = readtable(fullfile(path, file));
-    nomiCanali = data.Properties.VariableNames;
+    channelNames = data.Properties.VariableNames;
 
-    for c = 1:length(nomiCanali)
-        nomeAttuale = nomiCanali{c};
-        segnale = data.(nomeAttuale);
-        x = segnale(:);
+    for c = 1:length(channelNames)
+        currentName = channelNames{c};
+        signal = data.(currentName);
+        x = signal(:);
 
-        % --- Robust segmentation: gap = padding value (absolute minimum) ---
+        % --- Segmentation: gaps are runs of the padding value (absolute minimum) ---
         gapVal = min(abs(x(isfinite(x))));
         if isempty(gapVal) || ~isfinite(gapVal)
-            fprintf('Channel %s: invalid gapVal -> skipping\n', nomeAttuale);
+            fprintf('Channel %s: invalid gapVal -> skipping\n', currentName);
             continue;
         end
 
         tol = 1.05;
         isGapRaw = abs(x) <= tol * gapVal;
 
-        gapMin = 200;
+        gapMin = 200;                       % Runs shorter than this are not gaps
         isGap = isGapRaw;
 
         d_gap = diff([0; isGapRaw; 0]);
@@ -67,80 +70,70 @@ for d = 1:length(datasetList)
         endIdx   = find(d_idx == -1) - 1;
 
         nSeg = numel(startIdx);
-        fprintf('Channel %s -> Segments found: %d\n', nomeAttuale, nSeg);
+        fprintf('Channel %s -> Segments found: %d\n', currentName, nSeg);
 
-        HFD_stack = [];   % Each row = HFD_vs_K of a valid segment
+        NCD_stack = [];                     % Each row = NCD vs k of a valid segment
         nValidSeg = 0;
 
         for s = 1:nSeg
-            segmento = segnale(startIdx(s):endIdx(s));
-            segmento = segmento(:);
-            segmento = segmento(isfinite(segmento));
+            segment = signal(startIdx(s):endIdx(s));
+            segment = segment(:);
+            segment = segment(isfinite(segment));
 
-            if numel(segmento) <= (2 * kmax)
+            if numel(segment) <= minSegLen
                 continue;
             end
 
-            % --- Function call: obtain Lk ---
-            [~, Lk, fitInfo] = fractaldim_frechet(segmento, kmax, alpha);
+            % NCD for each k (causal filter + decimation + PPMd-H)
+            [Lk, ~] = ncd_ppmd_bt(segment, ks, n_bits, Fs, fc_Hz, reportBase);
 
             if isempty(Lk) || all(~isfinite(Lk))
                 continue;
             end
 
-            % --- Build HFD_vs_K from Lk vector ---
-            HFD_vs_K = NaN(1, numel(K_range));
-
-            for Kfit = kmin:kmax
-                kk = (kmin:Kfit)';
-                yy = Lk(kk)';
-
-                valid = isfinite(yy) & (yy > 0);
-                if nnz(valid) < minPtsFit
-                    continue;
-                end
-
-                xfit = log(1 ./ kk(valid));
-                yfit = log(yy(valid));
-
-                coeff = polyfit(xfit, yfit, 1);
-                HFD_vs_K(Kfit - kmin + 1) = coeff(1);
-            end
-
-            if all(~isfinite(HFD_vs_K))
-                continue;
-            end
-
-            HFD_stack = [HFD_stack; HFD_vs_K]; 
+            NCD_stack = [NCD_stack; Lk]; %#ok<AGROW>
             nValidSeg = nValidSeg + 1;
         end
 
-        if ~isempty(HFD_stack)
-            HFD_median_curve = median(HFD_stack, 1, 'omitnan');
+        if ~isempty(NCD_stack)
+            % Median across segments -> one NCD(k) curve per channel
+            NCD_median_curve = median(NCD_stack, 1, 'omitnan');
 
-            % Metadata extraction (GD/NG, Subject, Electrode)
-            if numel(nomeAttuale) >= 7
-                tipo = nomeAttuale(1:2);
-                soggetto = nomeAttuale(3:5);
-                elettrodo = nomeAttuale(6:end-1);
+            % Metadata extraction (electrode type, subject, electrode)
+            if numel(currentName) >= 7
+                elType    = currentName(1:2);
+                subject   = currentName(3:5);
+                electrode = currentName(6:end-1);
             else
-                tipo = "";
-                soggetto = "";
-                elettrodo = "";
+                elType = ''; subject = ''; electrode = '';
             end
 
-            res = table({currentDS}, {nomeAttuale}, {tipo}, {soggetto}, {elettrodo}, ...
-                {HFD_median_curve}, {K_range}, ...
-                'VariableNames', {'Area','Channel','ElectrodeType','SubjectID','Electrode','HFD_vs_K','K_range'});
+            res = table({currentDS}, {currentName}, {elType}, {subject}, {electrode}, ...
+                {NCD_median_curve}, {K_range}, ...
+                'VariableNames', {'Area','Channel','ElectrodeType','SubjectID','Electrode','NCD_vs_K','K_range'});
+            NCD_awake = [NCD_awake; res]; %#ok<AGROW>
 
-            HFDf_awake = [HFDf_awake; res]; 
-
-            fprintf('Channel %s completed: HFD(K) curve saved (nValidSeg=%d)\n', ...
-                nomeAttuale, nValidSeg);
+            fprintf('Channel %s completed: NCD(k) curve saved (nValidSeg=%d)\n', ...
+                currentName, nValidSeg);
         else
-            fprintf('Channel %s: no valid HFD curve found\n', nomeAttuale);
+            fprintf('Channel %s: no valid NCD curve found\n', currentName);
         end
     end
 end
 
-save('HFDf_totale_curves.mat', 'HFDf_totale_1');
+% --- Sanity check: the same file must not be selected for two areas ---
+fn = fieldnames(fileUsed);
+for ii = 1:numel(fn)
+    for jj = ii+1:numel(fn)
+        if strcmp(fileUsed.(fn{ii}), fileUsed.(fn{jj}))
+            warning('Same file selected for %s and %s (%s). Please check.', ...
+                fn{ii}, fn{jj}, fileUsed.(fn{ii}));
+        end
+    end
+end
+
+if isempty(NCD_awake)
+    error('No NCD curve computed: check input files and pyenv.');
+end
+
+save('NCD_awake_curves.mat', 'NCD_awake', 'ks', 'fc_Hz', 'n_bits', 'reportBase', 'Fs');
