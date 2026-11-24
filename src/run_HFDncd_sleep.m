@@ -1,1569 +1,530 @@
-%% ============================================================
-% RUN SLEEP: NCD-PPMd
-%
-% Adattamento del codice AWAKE ai dati del SONNO
-%
-% Stati:
-%   N2
-%   N3
-%   REM
-%
-% Aree:
-%   A1
-%   M1
-%   S1
-%
-% Per ogni segmento e per ogni k:
-%
-%   Butterworth passa-basso
-%          ↓
-%   sottocampionamento
-%          ↓
-%   Qk NON riportato alla base di P
-%          ↓
-%   NCD(P,Qk) con PPMd
-%
-% riportaBase = FALSE
-%
-% Richiede:
-%   ncd_ppmd_bt.m
-%   bw_lowpass_causal.m
-%   Python + pyppmd
-%
-%% ============================================================
-
+%% RUN SLEEP: NCD-PPMd-H (N2, N3, REM)
+% Stessa pipeline del run_HFDncd_awake.m, applicata separatamente a ogni stato.
+% Richiede ncd_ppmd_bt.m, bw_lowpass_causal.m e Python con pyppmd.
 clearvars
 clc
 close all
 
-
-%% ============================================================
-% PARAMETRI
-%% ============================================================
-
+%% --- PARAMETRI ---
 Fs = 200;
-
 ks = [2 5 10 20 33 67];
-
 fc_Hz = [35 14 7 3.5 2 1];
-
 n_bits = 3;
-
-% ------------------------------------------------------------
-% Qk rimane sottocampionato:
-% NON viene riportato alla stessa lunghezza temporale di P
-% ------------------------------------------------------------
-
 riportaBase = false;
-
 minSegLen = 400;
-
-% k usato per scatterplot e statistiche
 k_stat = 2;
-
-
 K_range = ks;
-
-
-idx_k = find(ks == k_stat,1);
-
+idx_k = find(ks == k_stat, 1);
 if isempty(idx_k)
-
-    error('k_stat deve essere uno dei valori presenti in ks.');
-
+    error('k_stat deve essere uno dei valori di ks.');
 end
-
-
-%% ============================================================
-% AREE E STATI
-%% ============================================================
 
 areas = {'A1','M1','S1'};
-
 states = {'N2','N3','REM'};
+% Conteggi attesi nel dataset di riferimento (righe: stati; colonne: aree).
+expectedCounts = [6 16 14; 6 16 14; 5 13 11];
+salvaFigure = false;  % esportazione facoltativa PNG per soggetto
 
-
-%% ============================================================
-% SELEZIONE CARTELLA DEL SONNO
-%% ============================================================
-
-sleepFolder = uigetdir( ...
-    pwd, ...
-    'Seleziona la cartella contenente i file del sonno');
-
-
+sleepFolder = uigetdir(pwd, 'Seleziona la cartella contenente i file del sonno');
 if isequal(sleepFolder,0)
-
     error('Nessuna cartella selezionata.');
-
 end
 
+NCDppmdH_sleep_noBase = table('Size',[0 9], ...
+    'VariableTypes',repmat({'cell'},1,9), ...
+    'VariableNames',{'Area','State','File','Channel','ElectrodeType', ...
+    'SubjectID','Electrode','NCD_vs_K','K_range'});
 
-fprintf('\nCartella selezionata:\n%s\n',sleepFolder);
-
-
-%% ============================================================
-% TABELLA RISULTATI
-%% ============================================================
-
-NCDppmdH_sleep_noBase = table();
-
-
-%% ============================================================
-% CARICAMENTO E CALCOLO
-%% ============================================================
-
+%% --- CARICAMENTO E CALCOLO (stessa segmentazione della veglia) ---
 for st = 1:numel(states)
-
     currentState = states{st};
-
-
-    fprintf('\n');
-    fprintf('====================================================\n');
-    fprintf('                     %s\n',currentState);
-    fprintf('====================================================\n');
-
-
-    %% ========================================================
-    % LOOP AREE
-    %% ========================================================
-
-    for a = 1:numel(areas)
-
-        currentArea = areas{a};
-
-
-        fprintf('\n--- %s - %s ---\n', ...
-            currentState, ...
-            currentArea);
-
-
-        %% ====================================================
-        % CERCA AUTOMATICAMENTE FILE
-        %% ====================================================
-
-        patternCSV = sprintf( ...
-            '%s_%s*.csv', ...
-            currentArea, ...
-            currentState);
-
-
-        patternXLSX = sprintf( ...
-            '%s_%s*.xlsx', ...
-            currentArea, ...
-            currentState);
-
-
-        filesCSV = dir( ...
-            fullfile( ...
-                sleepFolder, ...
-                patternCSV));
-
-
-        filesXLSX = dir( ...
-            fullfile( ...
-                sleepFolder, ...
-                patternXLSX));
-
-
-        files = [filesCSV; filesXLSX];
-
-
-        %% ====================================================
-        % NESSUN FILE
-        %% ====================================================
-
+    for d = 1:numel(areas)
+        currentDS = areas{d};
+        fprintf('\n--- %s / %s ---\n', currentState, currentDS);
+        files = [dir(fullfile(sleepFolder, [currentDS '_' currentState '*.csv'])); ...
+                 dir(fullfile(sleepFolder, [currentDS '_' currentState '*.xlsx']))];
         if isempty(files)
-
-            warning( ...
-                'Nessun file trovato per %s - %s', ...
-                currentArea, ...
-                currentState);
-
-            continue
-
+            warning('Nessun file trovato per %s - %s.', currentDS, currentState);
+            continue;
         end
-
-
-        fprintf( ...
-            'Trovati %d file per %s - %s\n', ...
-            numel(files), ...
-            currentArea, ...
-            currentState);
-
-
-        %% ====================================================
-        % LOOP EVENTUALI FILE MULTIPLI
-        %% ====================================================
-
         for f = 1:numel(files)
-
             fileName = files(f).name;
-
-
-            fprintf('\nFile: %s\n',fileName);
-
-
-            filePath = fullfile( ...
-                sleepFolder, ...
-                fileName);
-
-
-            %% =================================================
-            % LETTURA
-            %% =================================================
-
-            data = readtable(filePath);
-
-
-            nomiCanali = ...
-                data.Properties.VariableNames;
-
-
-            %% =================================================
-            % LOOP CANALI
-            %% =================================================
-
+            data = readtable(fullfile(sleepFolder, fileName));
+            nomiCanali = data.Properties.VariableNames;
             for c = 1:numel(nomiCanali)
-
-                nomeAttuale = ...
-                    nomiCanali{c};
-
-
-                segnale = ...
-                    data.(nomeAttuale);
-
-
-                %% ---------------------------------------------
-                % CONTROLLO NUMERICO
-                %% ---------------------------------------------
-
+                nomeAttuale = nomiCanali{c};
+                segnale = data.(nomeAttuale);
                 if ~isnumeric(segnale)
-
-                    fprintf( ...
-                        'Canale %s non numerico -> skip\n', ...
-                        nomeAttuale);
-
-                    continue
-
+                    fprintf('Canale %s non numerico -> skip\n', nomeAttuale);
+                    continue;
                 end
-
-
                 x = segnale(:);
 
-
-                %% =================================================
-                % CAMPIONI FINITI
-                %% =================================================
-
-                finiteValues = ...
-                    x(isfinite(x));
-
-
-                if isempty(finiteValues)
-
-                    fprintf( ...
-                        'Canale %s vuoto -> skip\n', ...
-                        nomeAttuale);
-
-                    continue
-
-                end
-
-
-                %% =================================================
-                % IDENTIFICAZIONE GAP
-                %% =================================================
-
-                gapVal = ...
-                    min(abs(finiteValues));
-
-
+                % --- segmentazione robusta: gap = valore di padding (minimo assoluto) ---
+                gapVal = min(abs(x(isfinite(x))));
                 if isempty(gapVal) || ~isfinite(gapVal)
-
-                    fprintf( ...
-                        'Canale %s: gapVal non valido -> skip\n', ...
-                        nomeAttuale);
-
-                    continue
-
+                    fprintf('Canale %s: gapVal non valido -> skip\n', nomeAttuale);
+                    continue;
                 end
-
 
                 tol = 1.05;
-
-
-                isGapRaw = ...
-                    abs(x) <= tol * gapVal;
-
-
+                isGapRaw = abs(x) <= tol * gapVal;
                 gapMin = 200;
+                isGap = isGapRaw;
 
-
-                isGap = ...
-                    isGapRaw;
-
-
-                %% =================================================
-                % GAP CONTIGUI
-                %% =================================================
-
-                d_gap = diff( ...
-                    [0; isGapRaw; 0]);
-
-
-                gs = find( ...
-                    d_gap == 1);
-
-
-                ge = find( ...
-                    d_gap == -1) - 1;
-
-
-                %% =================================================
-                % GAP TROPPO CORTI:
-                % NON vengono considerati veri gap
-                %% =================================================
-
+                d_gap = diff([0; isGapRaw; 0]);
+                gs = find(d_gap == 1);
+                ge = find(d_gap == -1) - 1;
                 for ii = 1:numel(gs)
-
-                    if (ge(ii)-gs(ii)+1) < gapMin
-
+                    if (ge(ii) - gs(ii) + 1) < gapMin
                         isGap(gs(ii):ge(ii)) = false;
-
                     end
-
                 end
 
+                isSignal = ~isGap & isfinite(x);
+                d_idx = diff([0; isSignal; 0]);
+                startIdx = find(d_idx == 1);
+                endIdx   = find(d_idx == -1) - 1;
 
-                %% =================================================
-                % SEGMENTI VALIDI
-                %% =================================================
-
-                isSignal = ...
-                    ~isGap & isfinite(x);
-
-
-                d_idx = diff( ...
-                    [0; isSignal; 0]);
-
-
-                startIdx = find( ...
-                    d_idx == 1);
-
-
-                endIdx = find( ...
-                    d_idx == -1) - 1;
-
-
-                nSeg = ...
-                    numel(startIdx);
-
-
-                fprintf( ...
-                    'Canale %s -> Segmenti trovati: %d\n', ...
-                    nomeAttuale, ...
-                    nSeg);
-
-
-                %% =================================================
-                % MATRICE NCD SEGMENTI
-                %% =================================================
+                nSeg = numel(startIdx);
+                fprintf('Canale %s -> Segmenti trovati: %d\n', nomeAttuale, nSeg);
 
                 NCD_stack = [];
-
                 nValidSeg = 0;
 
-
-                %% =================================================
-                % LOOP SEGMENTI
-                %% =================================================
-
                 for s = 1:nSeg
-
-                    segmento = ...
-                        segnale( ...
-                            startIdx(s):endIdx(s));
-
-
+                    segmento = segnale(startIdx(s):endIdx(s));
                     segmento = segmento(:);
-
-
-                    segmento = ...
-                        segmento(isfinite(segmento));
-
-
-                    %% ---------------------------------------------
-                    % SEGMENTO TROPPO CORTO
-                    %% ---------------------------------------------
+                    segmento = segmento(isfinite(segmento));
 
                     if numel(segmento) <= minSegLen
-
-                        continue
-
+                        continue;
                     end
 
+                    % NCD per ogni k (filtro causale + decimazione + PPMd)
+                    [Lk, ~] = ncd_ppmd_bt(segmento, ks, n_bits, Fs, fc_Hz, riportaBase);
 
-                    %% =================================================
-                    % NCD PER TUTTI I k
-                    %
-                    % Butterworth + decimazione + PPMd
-                    %
-                    % riportaBase = false
-                    %% =================================================
-
-                    [Lk,~] = ...
-                        ncd_ppmd_bt( ...
-                            segmento, ...
-                            ks, ...
-                            n_bits, ...
-                            Fs, ...
-                            fc_Hz, ...
-                            riportaBase);
-
-
-                    %% ---------------------------------------------
-                    % CONTROLLO
-                    %% ---------------------------------------------
-
-                    if isempty(Lk) || ...
-                            all(~isfinite(Lk))
-
-                        continue
-
+                    if isempty(Lk) || all(~isfinite(Lk))
+                        continue;
                     end
 
-
-                    %% ---------------------------------------------
-                    % AGGIUNGE CURVA
-                    %% ---------------------------------------------
-
-                    NCD_stack = [ ...
-                        NCD_stack; ...
-                        Lk]; %#ok<AGROW>
-
-
-                    nValidSeg = ...
-                        nValidSeg + 1;
-
+                    NCD_stack = [NCD_stack; Lk]; %#ok<AGROW>
+                    nValidSeg = nValidSeg + 1;
                 end
 
+                if ~isempty(NCD_stack)
+                    NCD_median_curve = median(NCD_stack, 1, 'omitnan');
 
-                %% =================================================
-                % MEDIANA TRA SEGMENTI
-                %% =================================================
-
-                if isempty(NCD_stack)
-
-                    fprintf( ...
-                        'Canale %s: nessuna curva NCD valida\n', ...
-                        nomeAttuale);
-
-                    continue
-
-                end
-
-
-                NCD_median_curve = ...
-                    median( ...
-                        NCD_stack, ...
-                        1, ...
-                        'omitnan');
-
-
-                %% =================================================
-                % METADATA DAL NOME DEL CANALE
-                %% =================================================
-
-                if numel(nomeAttuale) >= 7
-
-                    tipo = ...
-                        nomeAttuale(1:2);
-
-
-                    soggetto = ...
-                        nomeAttuale(3:5);
-
-
-                    elettrodo = ...
-                        nomeAttuale(6:end-1);
-
+                    if numel(nomeAttuale) >= 7
+                        tipo = nomeAttuale(1:2);
+                        soggetto = nomeAttuale(3:5);
+                        elettrodo = nomeAttuale(6:end-1);
+                    else
+                        tipo = ''; soggetto = ''; elettrodo = '';
+                    end
+                    res = table({currentDS}, {currentState}, {fileName}, ...
+                        {nomeAttuale}, {tipo}, {soggetto}, {elettrodo}, ...
+                        {NCD_median_curve}, {K_range}, ...
+                        'VariableNames', NCDppmdH_sleep_noBase.Properties.VariableNames);
+                    NCDppmdH_sleep_noBase = [NCDppmdH_sleep_noBase; res]; %#ok<AGROW>
+                    fprintf('Canale %s completato (nSegValidi=%d)\n', nomeAttuale, nValidSeg);
                 else
-
-                    tipo = '';
-
-                    soggetto = '';
-
-                    elettrodo = '';
-
+                    fprintf('Canale %s: nessuna curva NCD valida\n', nomeAttuale);
                 end
-
-
-                %% =================================================
-                % CREA RIGA TABELLA
-                %% =================================================
-
-                res = table( ...
-                    {currentArea}, ...
-                    {currentState}, ...
-                    {fileName}, ...
-                    {nomeAttuale}, ...
-                    {tipo}, ...
-                    {soggetto}, ...
-                    {elettrodo}, ...
-                    {NCD_median_curve}, ...
-                    {K_range}, ...
-                    'VariableNames', ...
-                    { ...
-                    'Area', ...
-                    'State', ...
-                    'File', ...
-                    'Channel', ...
-                    'ElectrodeType', ...
-                    'SubjectID', ...
-                    'Electrode', ...
-                    'NCD_vs_K', ...
-                    'K_range'});
-
-
-                %% =================================================
-                % AGGIUNGE ALLA TABELLA
-                %% =================================================
-
-                NCDppmdH_sleep_noBase = [ ...
-                    NCDppmdH_sleep_noBase; ...
-                    res]; %#ok<AGROW>
-
-
-                fprintf( ...
-                    ['Canale %s completato: curva NCD(k) ' ...
-                     'salvata (nSegValidi=%d)\n'], ...
-                    nomeAttuale, ...
-                    nValidSeg);
-
             end
-
         end
-
     end
-
 end
-
-
-%% ============================================================
-% CONTROLLO FINALE
-%% ============================================================
 
 if isempty(NCDppmdH_sleep_noBase)
-
-    error([ ...
-        'Nessuna curva NCD calcolata. ' ...
-        'Controlla file, nomi, pyenv e pyppmd.']);
-
+    error('Nessuna curva NCD calcolata: controlla i file e pyenv.');
 end
+% Avviso per canali ripetuti nello stesso stato e area (es. CSV e XLSX duplicati).
+[G,ga,gs,gc] = findgroups(NCDppmdH_sleep_noBase.Area, ...
+    NCDppmdH_sleep_noBase.State, NCDppmdH_sleep_noBase.Channel);
+counts = splitapply(@numel, NCDppmdH_sleep_noBase.Channel, G);
+for i = find(counts > 1)'
+    warning('Canale duplicato: %s / %s / %s. Controllare i file di origine.', ...
+        ga{i}, gs{i}, gc{i});
+end
+save('NCDppmdH_sleep_noBase.mat', 'NCDppmdH_sleep_noBase', ...
+    'ks', 'fc_Hz', 'n_bits', 'riportaBase', 'Fs');
 
-
-%% ============================================================
-% SALVATAGGIO
-%% ============================================================
-
-save( ...
-    'NCDppmdH_sleep_noBase.mat', ...
-    'NCDppmdH_sleep_noBase', ...
-    'ks', ...
-    'fc_Hz', ...
-    'n_bits', ...
-    'riportaBase', ...
-    'Fs');
-
-
-fprintf('\n');
-fprintf('====================================================\n');
-fprintf('CALCOLO COMPLETATO\n');
-fprintf('Canali totali: %d\n', ...
-    height(NCDppmdH_sleep_noBase));
-fprintf('File: NCDppmdH_sleep_noBase.mat\n');
-fprintf('riportaBase = false\n');
-fprintf('====================================================\n');
-
-
-%% ============================================================
-% COLORI
-%% ============================================================
-
-color_M1 = [0.85 0.15 0.15];
-
-color_S1 = [0.15 0.50 0.80];
-
-color_A1 = [0.10 0.45 0.20];
-
-
-colors = struct( ...
-    'A1',color_A1, ...
-    'M1',color_M1, ...
-    'S1',color_S1);
-
-
-lineStyles = struct( ...
-    'A1',':o', ...
-    'M1','-s', ...
-    'S1','--d');
-
-
-%% ============================================================
-% TABELLE PER SOGGETTO
-% AL k DI RIFERIMENTO
-%% ============================================================
-
+%% --- ANALISI PER STATO: stesso codice della veglia ---
 subjectTables = struct();
-
-
+channelTables = struct();
+stats_sleep = table();
+tab_tutti_sleep = table();
+riepilogo_sleep = table();
 for st = 1:numel(states)
+    statoLabel = states{st};
+    fprintf('\n========== %s ==========\n', statoLabel);
+    Tstate = NCDppmdH_sleep_noBase(strcmp(NCDppmdH_sleep_noBase.State, statoLabel), :);
+    % Vista di lavoro con le stesse sette colonne e gli stessi nomi della veglia.
+    % La tabella salvata mantiene State e File e lo schema originale del sonno.
+    T = Tstate(:, {'Area','Channel','ElectrodeType','SubjectID','Electrode','NCD_vs_K','K_range'});
+    T.Properties.VariableNames = {'Area','Canale','TipoElettrodo','SoggettoID','Elettrodo','NCD_vs_K','K_range'};
+    channelTables.(statoLabel) = T;
+    subjectTables.(statoLabel) = build_subject_table(T, idx_k);
+    if isempty(T)
+        warning('Nessun canale valido per %s: analisi saltata.', statoLabel);
+        continue;
+    end
+    %% --- COLORI ---
+    color_M1 = [0.85, 0.15, 0.15]; % Rosso opaco
+    color_S1 = [0.15, 0.50, 0.80]; % Blu opaco
+    color_A1 = [0.10, 0.45, 0.20]; % Verde scuro
+    areas = {'A1', 'M1', 'S1'};
 
-    currentState = states{st};
+    %% --- PLOT ESEMPIO: primo canale ---
+    figure; hold on; grid on; box on;
+    plot(T.K_range{1}, T.NCD_vs_K{1}, 'o-', 'LineWidth', 2);
+    xticks(ks);
+    xlabel('k'); ylabel('NCD');
+    title(sprintf('%s - Esempio curva NCD(k) - %s', statoLabel, T.Canale{1}));
 
+    %% --- PLOT SOGGETTO SPECIFICO (mediana canali per area) ---
+    subjectID = '029';
+    if ~any(strcmp(T.SoggettoID, subjectID))
+        subjectID = T.SoggettoID{1};
+    end
+    Tsub = T(strcmp(T.SoggettoID, subjectID), :);
 
-    subjectTables.(currentState) = ...
-        build_subject_table_sleep( ...
-            NCDppmdH_sleep_noBase, ...
-            currentState, ...
-            idx_k);
-
-
-    fprintf( ...
-        '\n--- TABELLA SOGGETTI %s - k=%d ---\n', ...
-        currentState, ...
-        k_stat);
-
-
-    disp( ...
-        subjectTables.(currentState));
-
-end
-
-
-%% ============================================================
-% CURVE MEDIE NCD(k)
-%
-% N2
-% N3
-% REM
-%
-% UNA SOPRA L'ALTRA
-%% ============================================================
-
-figure( ...
-    'Color','w', ...
-    'Position',[200 40 850 1050]);
-
-
-tiledlayout( ...
-    3, ...
-    1, ...
-    'TileSpacing','compact', ...
-    'Padding','compact');
-
-
-for st = 1:numel(states)
-
-    currentState = states{st};
-
-
-    ax = nexttile;
-
-
-    hold(ax,'on');
-
-    grid(ax,'on');
-
-    box(ax,'on');
-
-
-    handles = [];
-
-    labels = {};
-
-
-    %% ========================================================
-    % LOOP AREE
-    %% ========================================================
-
-    for a = 1:numel(areas)
-
-        currentArea = areas{a};
-
-
-        idx = ...
-            strcmp( ...
-                NCDppmdH_sleep_noBase.State, ...
-                currentState) & ...
-            strcmp( ...
-                NCDppmdH_sleep_noBase.Area, ...
-                currentArea);
-
-
-        Ta = ...
-            NCDppmdH_sleep_noBase(idx,:);
-
-
-        if isempty(Ta)
-
-            continue
-
+    figure; hold on; grid on; box on
+    plot_c = []; legend_labels = {};
+    for i = 1:numel(areas)
+        Ta = Tsub(strcmp(Tsub.Area, areas{i}), :);
+        if isempty(Ta), continue; end
+        Hmed = median(cell2mat(Ta.NCD_vs_K), 1, 'omitnan');
+        switch areas{i}
+            case 'A1', c = plot(ks, Hmed, '--o', 'Color', 'g', 'LineWidth', 2);
+            case 'M1', c = plot(ks, Hmed, '-s',  'Color', 'r', 'LineWidth', 2);
+            case 'S1', c = plot(ks, Hmed, ':d',  'Color', 'b', 'LineWidth', 2);
         end
+        plot_c = [plot_c, c]; %#ok<AGROW>
+        legend_labels = [legend_labels, areas{i}]; %#ok<AGROW>
+    end
+    legend(plot_c, legend_labels, 'Location', 'best');
+    xticks(ks);
+    xlabel('k', 'FontWeight', 'bold'); ylabel('NCD', 'FontWeight', 'bold');
+    title(sprintf('%s - Sub %s', statoLabel, subjectID));
 
+    %% --- TABELLA PER SOGGETTO AL k DI RIFERIMENTO ---
+    tabella_soggetti = build_subject_table(T, idx_k);
 
-        %% ====================================================
-        % IMPORTANTE:
-        %
-        % Qui calcoliamo prima una curva per soggetto,
-        % facendo la MEDIA tra i canali dello stesso soggetto.
-        %
-        % Poi media +/- SD tra soggetti.
-        %% ====================================================
-
-        subjects = unique( ...
-            Ta.SubjectID, ...
-            'stable');
-
-
-        subjectCurves = ...
-            NaN( ...
-                numel(subjects), ...
-                numel(ks));
-
-
-        for s = 1:numel(subjects)
-
-            sid = subjects{s};
-
-
-            idxSub = ...
-                strcmp( ...
-                    Ta.SubjectID, ...
-                    sid);
-
-
-            M = ...
-                cell2mat( ...
-                    Ta.NCD_vs_K(idxSub));
-
-
-            subjectCurves(s,:) = ...
-                mean( ...
-                    M, ...
-                    1, ...
-                    'omitnan');
-
+    % controllo anti-duplicati (2): due aree identiche per tutti i soggetti?
+    coppie_aree = {'A1','M1'; 'A1','S1'; 'M1','S1'};
+    for ii = 1:size(coppie_aree, 1)
+        v1 = tabella_soggetti.(coppie_aree{ii,1});
+        v2 = tabella_soggetti.(coppie_aree{ii,2});
+        mask = ~isnan(v1) & ~isnan(v2);
+        if any(mask) && isequal(v1(mask), v2(mask))
+            warning('I valori di %s e %s a k=%d sono IDENTICI per tutti i soggetti: probabile scambio di file.', ...
+                coppie_aree{ii,1}, coppie_aree{ii,2}, k_stat);
         end
-
-
-        %% ====================================================
-        % MEDIA +/- SD TRA SOGGETTI
-        %% ====================================================
-
-        m = ...
-            mean( ...
-                subjectCurves, ...
-                1, ...
-                'omitnan');
-
-
-        sd = ...
-            std( ...
-                subjectCurves, ...
-                0, ...
-                1, ...
-                'omitnan');
-
-
-        %% ====================================================
-        % PLOT
-        %% ====================================================
-
-        h = plot( ...
-            ax, ...
-            ks, ...
-            m, ...
-            lineStyles.(currentArea), ...
-            'Color', ...
-            colors.(currentArea), ...
-            'LineWidth',1.8, ...
-            'MarkerSize',6, ...
-            'MarkerFaceColor','none');
-
-
-        errorbar( ...
-            ax, ...
-            ks, ...
-            m, ...
-            sd, ...
-            'Color', ...
-            colors.(currentArea), ...
-            'LineWidth',0.9, ...
-            'CapSize',4, ...
-            'LineStyle','none', ...
-            'HandleVisibility','off');
-
-
-        handles = [ ...
-            handles, ...
-            h]; %#ok<AGROW>
-
-
-        labels = [ ...
-            labels, ...
-            currentArea]; %#ok<AGROW>
-
     end
 
+    %% --- MEDIA +/- SD PER AREA (k = k_stat) ---
+    areas_order = {'A1', 'S1', 'M1'};
+    markers_fig = struct('A1', 'o', 'S1', 'd', 'M1', 's');
+    colors_fig  = struct('A1', color_A1, 'S1', color_S1, 'M1', color_M1);
 
-    %% ========================================================
-    % FORMATTAZIONE
-    %% ========================================================
-
-    title( ...
-        ax, ...
-        currentState, ...
-        'FontWeight','bold', ...
-        'FontSize',13);
-
-
-    xlabel( ...
-        ax, ...
-        'k', ...
-        'FontWeight','bold');
-
-
-    ylabel( ...
-        ax, ...
-        'NCD', ...
-        'FontWeight','bold');
-
-
-    xticks(ax,ks);
-
-
-    % piccolo spazio dopo k = 67
-    xlim(ax,[0 72]);
-
-
-    % limite superiore fisso
-    ylimCurrent = ylim(ax);
-
-    ylim(ax,[ylimCurrent(1) 1.06]);
-
-
-    set( ...
-        ax, ...
-        'FontSize',11, ...
-        'LineWidth',1.1, ...
-        'GridAlpha',0.25);
-
-
-    if ~isempty(handles)
-
-        legend( ...
-            ax, ...
-            handles, ...
-            labels, ...
-            'Location','northeast');
-
+    figure('Color', 'w', 'Position', [100, 300, 420, 420]);
+    hold on; box on; grid on;
+    for i = 1:numel(areas_order)
+        nm = areas_order{i};
+        vals = tabella_soggetti.(nm);
+        vals = vals(~isnan(vals));
+        if isempty(vals), continue; end
+        errorbar(i, mean(vals), std(vals), 'Color', colors_fig.(nm), 'LineWidth', 1.5, ...
+            'CapSize', 10, 'LineStyle', 'none', 'HandleVisibility', 'off');
+        plot(i, mean(vals), markers_fig.(nm), 'MarkerSize', 12, 'LineWidth', 1.5, ...
+            'MarkerFaceColor', colors_fig.(nm), 'MarkerEdgeColor', colors_fig.(nm));
     end
+    xlim([0.5, numel(areas_order) + 0.5]);
+    xticks(1:numel(areas_order)); xticklabels(areas_order);
+    ax = gca; ax.XAxis.FontWeight = 'bold';
+    ylabel(sprintf('NCD (k=%d)', k_stat), 'FontWeight', 'bold', 'FontSize', 13);
+    set(gca, 'FontSize', 11, 'LineWidth', 1.1);
+    title(statoLabel);
 
-end
+    %% --- SCATTERPLOT CON DIAGONALE (k = k_stat) ---
+    figure('Name', ['Scatterplots NCD: ' statoLabel], 'Color', 'w', 'Position', [100 300 1300 450]);
 
-
-%% ============================================================
-% SCATTERPLOT
-%
-% RIGHE:
-%   N2
-%   N3
-%   REM
-%
-% COLONNE:
-%   S1 vs A1
-%   M1 vs S1
-%   M1 vs A1
-%
-% k = k_stat
-%% ============================================================
-
-figure( ...
-    'Name','Scatterplot NCD sleep', ...
-    'Color','w', ...
-    'Position',[80 50 1150 1000]);
-
-
-confronti = { ...
-    'A1','S1'; ...
-    'S1','M1'; ...
-    'A1','M1'};
-
-
-limiti = [0.85 1.08];
-
-
-colTri = { ...
-    [0.55 0.82 0.92], ...
-    [0.92 0.28 0.27], ...
-    [0.92 0.28 0.27]};
-
-
-for st = 1:numel(states)
-
-    currentState = states{st};
-
-
-    tab = ...
-        subjectTables.(currentState);
-
+    confronti = {'A1', 'S1'; 'S1', 'M1'; 'A1', 'M1'};   % {asse X, asse Y}
+    limiti    = [0.85 1.08];
+    colTri    = {[0.55 0.82 0.92], [0.92 0.28 0.27], [0.92 0.28 0.27]};  % azzurro, rosso, rosso
+    mkSize    = 70;     % dimensione pallini
+    fsAsse    = 14;     % dimensione etichette assi
+    fsTick    = 11;     % dimensione numeri sugli assi
 
     for p = 1:3
+        areaX = confronti{p,1};
+        areaY = confronti{p,2};
+        X = tabella_soggetti.(areaX);
+        Y = tabella_soggetti.(areaY);
+        mask = ~isnan(X) & ~isnan(Y);
+        X = X(mask); Y = Y(mask);
 
-        areaX = ...
-            confronti{p,1};
+        subplot(1, 3, p); hold on;
+        if isempty(X), continue; end
+
+        % triangolo colorato sopra la diagonale (Y > X)
+        patch([limiti(1) limiti(2) limiti(1)], ...
+              [limiti(1) limiti(2) limiti(2)], ...
+              colTri{p}, 'EdgeColor', 'none');
+
+        % diagonale
+        plot(limiti, limiti, '--', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.75);
+
+        % pallini neri
+        scatter(X, Y, mkSize, 'filled', ...
+            'MarkerFaceColor', 'k', 'MarkerEdgeColor', 'k');
+
+        axis square; box on;
+        xlim(limiti); ylim(limiti);
+        set(gca, 'XTick', limiti, 'XTickLabel', [], ...
+                 'YTick', limiti, 'YTickLabel', {'0.85', '1.08'}, ...
+                 'TickLength', [0 0], ...
+                 'FontSize', fsTick, 'LineWidth', 1, 'Layer', 'top');
+
+        ylabel(areaY, 'FontSize', fsAsse, 'FontWeight', 'bold');
+        xlabel(areaX, 'FontSize', fsAsse, 'FontWeight', 'bold');
+        if p == 2, title(statoLabel); end
+    end
+    %% --- TABELLA STATISTICHE AL k DI RIFERIMENTO ---
+    tabella_statistiche = stats_table(tabella_soggetti, statoLabel);
+    fprintf('\n--- TABELLA RIASSUNTIVA TEST STATISTICI (k = %d, Wilcoxon signed-rank) ---\n', k_stat);
+    disp(tabella_statistiche);
+
+    %% --- STESSE STATISTICHE PER TUTTI I k  ---
+    % 6 k x 3 confronti = 18 test, SENZA correzione per test multipli.
+    % Z > 0 significa Area1 > Area2.
+    tab_tutti = table();
+    for ii = 1:numel(ks)
+        Sk = stats_table(build_subject_table(T, ii), statoLabel);
+        Sk.k = repmat(ks(ii), height(Sk), 1);
+        tab_tutti = [tab_tutti; Sk]; %#ok<AGROW>
+    end
+    fprintf('\n--- STATISTICHE PER OGNI k (esplorativo, nessuna correzione per test multipli) ---\n');
+    disp(tab_tutti(:, {'k','Confronto','n','Z','p_value','effect_size_r','mediana_diff'}));
 
 
-        areaY = ...
-            confronti{p,2};
-
-
-        X = ...
-            tab.(areaX);
-
-
-        Y = ...
-            tab.(areaY);
-
-
-        mask = ...
-            ~isnan(X) & ...
-            ~isnan(Y);
-
-
-        X = X(mask);
-
-        Y = Y(mask);
-
-
-        ax = subplot( ...
-            3, ...
-            3, ...
-            (st-1)*3+p);
-
-
-        hold(ax,'on');
-
-
-        if isempty(X)
-
-            continue
-
+    %% --- CURVE MEDIE NCD(k) PER AREA CON BARRE D'ERRORE ---
+    figure('Color', 'w', 'Position', [100, 200, 950, 320]);
+    hold on;
+    plot_handles = []; labels_ok = {};
+    for i = 1:numel(areas)
+        Ta = T(strcmp(T.Area, areas{i}), :);
+        if isempty(Ta), continue; end
+        Hstack = cell2mat(Ta.NCD_vs_K);
+        m  = mean(Hstack, 1, 'omitnan');
+        sd = std(Hstack, 0, 1, 'omitnan');
+        switch areas{i}
+            case 'A1', col = color_A1; ls = ':o';
+            case 'M1', col = color_M1; ls = '-s';
+            case 'S1', col = color_S1; ls = '--d';
         end
-
-
-        %% ====================================================
-        % TRIANGOLO Y > X
-        %% ====================================================
-
-        patch( ...
-            ax, ...
-            [limiti(1) limiti(2) limiti(1)], ...
-            [limiti(1) limiti(2) limiti(2)], ...
-            colTri{p}, ...
-            'EdgeColor','none');
-
-
-        %% ====================================================
-        % DIAGONALE
-        %% ====================================================
-
-        plot( ...
-            ax, ...
-            limiti, ...
-            limiti, ...
-            '--', ...
-            'Color',[0.7 0.7 0.7], ...
-            'LineWidth',0.8);
-
-
-        %% ====================================================
-        % PUNTI
-        %% ====================================================
-
-        scatter( ...
-            ax, ...
-            X, ...
-            Y, ...
-            55, ...
-            'filled', ...
-            'MarkerFaceColor','k', ...
-            'MarkerEdgeColor','k');
-
-
-        %% ====================================================
-        % FORMAT
-        %% ====================================================
-
-        axis(ax,'square');
-
-        box(ax,'on');
-
-
-        xlim(ax,limiti);
-
-        ylim(ax,limiti);
-
-
-        xticks(ax,limiti);
-
-        yticks(ax,limiti);
-
-
-        xticklabels( ...
-            ax, ...
-            {'0.85','1.08'});
-
-
-        yticklabels( ...
-            ax, ...
-            {'0.85','1.08'});
-
-
-        xlabel( ...
-            ax, ...
-            areaX, ...
-            'FontWeight','bold');
-
-
-        ylabel( ...
-            ax, ...
-            areaY, ...
-            'FontWeight','bold');
-
-
-        if p == 2
-
-            title( ...
-                ax, ...
-                currentState, ...
-                'FontWeight','bold');
-
-        end
-
-
-        set( ...
-            ax, ...
-            'FontSize',10, ...
-            'LineWidth',1, ...
-            'Layer','top');
-
+        h = plot(ks, m, ls, 'Color', col, 'LineWidth', 2.5);
+        errorbar(ks, m, sd, 'Color', col, 'LineWidth', 1.1, 'CapSize', 4, ...
+            'LineStyle', 'none', 'HandleVisibility', 'off');
+        plot_handles = [plot_handles, h]; %#ok<AGROW>
+        labels_ok = [labels_ok, areas{i}]; %#ok<AGROW>
     end
 
-end
+    title(statoLabel, 'FontSize', 12, 'FontWeight', 'bold');
+    xlabel('k',   'FontSize', 12, 'FontWeight', 'bold');
+    ylabel('NCD', 'FontSize', 12, 'FontWeight', 'bold');
+    grid on; box on;
+
+    xlim([-2 70]);                 % margine a sinistra di k=2 e a destra di k=67
+    xticks(ks);
+    ylim([0.88 1.08]);
+    yticks([0.9 0.95 1 1.05]);
+    yticklabels({'0.9', '0.95', '1', '1.05'});
+
+    set(gca, 'FontSize', 11, 'LineWidth', 1.1);
+    % legend(plot_handles, labels_ok, 'Location', 'best');   % nella figura di riferimento non c'è
 
 
-%% ============================================================
-% MEDIANA E IQR
-%
-% PER AREA E STATO
-% AL k = k_stat
-%
-% SUI CANALI
-%% ============================================================
+    %% --- TABELLA PER CANALE AL k DI RIFERIMENTO ---
+    T_kstat = T;
+    T_kstat.NCD_vs_K = cellfun(@(x) x(idx_k), T.NCD_vs_K);
+    T_kstat.K_range  = cellfun(@(x) x(idx_k), T.K_range);
 
-riepilogo = table();
+    %% --- MEDIANA E IQR PER AREA, SUI CANALI (k = k_stat) ---
+    areas_stat = {'A1', 'M1', 'S1'};
+    n_attesi = expectedCounts(st,:);
 
+    riepilogo = table();
+    for i = 1:numel(areas_stat)
+        nm   = areas_stat{i};
+        vals = T_kstat.NCD_vs_K(strcmp(T_kstat.Area, nm));
+        vals = vals(~isnan(vals));
 
-for st = 1:numel(states)
-
-    currentState = states{st};
-
-
-    for a = 1:numel(areas)
-
-        currentArea = areas{a};
-
-
-        idx = ...
-            strcmp( ...
-                NCDppmdH_sleep_noBase.State, ...
-                currentState) & ...
-            strcmp( ...
-                NCDppmdH_sleep_noBase.Area, ...
-                currentArea);
-
-
-        Ta = ...
-            NCDppmdH_sleep_noBase(idx,:);
-
-
-        if isempty(Ta)
-
-            continue
-
+        if numel(vals) ~= n_attesi(i)
+            warning('%s: trovati %d canali validi, attesi %d.', nm, numel(vals), n_attesi(i));
         end
 
-
-        %% ====================================================
-        % SOLO k = k_stat
-        %% ====================================================
-
-        vals = cellfun( ...
-            @(x) x(idx_k), ...
-            Ta.NCD_vs_K);
-
-
-        vals = ...
-            vals(isfinite(vals));
-
-
-        if isempty(vals)
-
-            continue
-
-        end
-
-
-        %% ====================================================
-        % QUARTILI
-        %% ====================================================
-
-        q = ...
-            prctile( ...
-                vals, ...
-                [25 50 75]);
-
-
-        %% ====================================================
-        % RIGA
-        %% ====================================================
-
-        riga = table( ...
-            {currentState}, ...
-            {currentArea}, ...
-            numel(vals), ...
-            q(2), ...
-            q(1), ...
-            q(3), ...
-            iqr(vals), ...
-            'VariableNames', ...
-            { ...
-            'State', ...
-            'Area', ...
-            'n_canali', ...
-            'Mediana', ...
-            'Q1', ...
-            'Q3', ...
-            'IQR'});
-
-
-        riepilogo = [ ...
-            riepilogo; ...
-            riga]; %#ok<AGROW>
-
+        if isempty(vals), continue; end
+        q = prctile(vals, [25 50 75]);
+        riga = table({nm}, numel(vals), q(2), q(1), q(3), iqr(vals), ...
+            'VariableNames', {'Area','n_canali','Mediana','Q1','Q3','IQR'});
+        riepilogo = [riepilogo; riga]; %#ok<AGROW>
     end
 
-end
+    fprintf('\n--- MEDIANA E IQR PER AREA (k = %d, sui canali) ---\n', k_stat);
+    disp(riepilogo);
 
+    % stampa nel formato "mediana [Q1 - Q3]" per il testo/tabella del paper
+    for i = 1:height(riepilogo)
+        fprintf('%s (n=%d): %.3f [IQR %.3f - %.3f, ampiezza %.3f]\n', ...
+            riepilogo.Area{i}, riepilogo.n_canali(i), riepilogo.Mediana(i), ...
+            riepilogo.Q1(i), riepilogo.Q3(i), riepilogo.IQR(i));
+    end
+    %% --- UNA FIGURA PER SOGGETTO: NCD vs k, una serie per area ---
+    cartellaFig = fullfile('figure_soggetti', statoLabel);
+    ordineAree   = {'M1', 'S1', 'A1'};   % ordine della legenda come nella tua figura
+    colArea      = struct('M1', color_M1, 'S1', color_S1, 'A1', color_A1);
 
-fprintf('\n');
-fprintf('====================================================\n');
-fprintf('MEDIANA E IQR - k = %d\n',k_stat);
-fprintf('====================================================\n');
+    % limiti y comuni a tutti i soggetti, per poter confrontare le figure
+    tuttiNCD = cell2mat(T.NCD_vs_K);
+    pad      = 0.02 * (max(tuttiNCD(:), [], 'omitnan') - min(tuttiNCD(:), [], 'omitnan'));
+    if pad == 0, pad = 0.01; end
+    ylimComuni = [min(tuttiNCD(:), [], 'omitnan') - pad, max(tuttiNCD(:), [], 'omitnan') + pad];
 
-disp(riepilogo);
+    if salvaFigure && ~exist(cartellaFig, 'dir'), mkdir(cartellaFig); end
 
+    soggetti = tabella_soggetti.SoggettoID;
+    for i = 1:numel(soggetti)
+        sid = soggetti{i};
 
-%% ============================================================
-% WILCOXON TRA AREE
-%
-% k = 2
-%
-% M1 > S1
-% M1 > A1
-% S1 > A1
-%
-% PAIRED
-% ONE-TAILED
-%% ============================================================
+        fig = figure('Color', 'w', 'Position', [100 100 560 450], ...
+                     'Name', ['Subject ' sid]);
+        hold on; box on; grid on;
+        handles = []; etichette = {};
 
-stats_sleep = table();
+        for a = 1:numel(ordineAree)
+            nm  = ordineAree{a};
+            idx = strcmp(T.SoggettoID, sid) & strcmp(T.Area, nm);
+            if ~any(idx), continue; end           % area non presente per questo soggetto
 
+            M = cell2mat(T.NCD_vs_K(idx));   % (n canali) x (n k)
+            y = mean(M, 1, 'omitnan');                   % media tra canali della stessa area
 
-comparisons = { ...
-    'M1','S1'; ...
-    'M1','A1'; ...
-    'S1','A1'};
-
-
-for st = 1:numel(states)
-
-    currentState = states{st};
-
-
-    tab = ...
-        subjectTables.(currentState);
-
-
-    for c = 1:size(comparisons,1)
-
-        areaHigh = ...
-            comparisons{c,1};
-
-
-        areaLow = ...
-            comparisons{c,2};
-
-
-        X = ...
-            tab.(areaHigh);
-
-
-        Y = ...
-            tab.(areaLow);
-
-
-        mask = ...
-            ~isnan(X) & ...
-            ~isnan(Y);
-
-
-        X = X(mask);
-
-        Y = Y(mask);
-
-
-        n = ...
-            numel(X);
-
-
-        p = NaN;
-
-        W = NaN;
-
-        md = NaN;
-
-
-        %% ====================================================
-        % WILCOXON
-        %% ====================================================
-
-        if n >= 3
-
-            [p,~,statW] = ...
-                signrank( ...
-                    X, ...
-                    Y, ...
-                    'tail','right');
-
-
-            if isfield( ...
-                    statW, ...
-                    'signedrank')
-
-                W = ...
-                    statW.signedrank;
-
-            end
-
-
-            md = ...
-                median(X-Y);
-
+            h = plot(ks, y, 'o', 'MarkerSize', 8, 'LineStyle', 'none', ...
+                     'MarkerFaceColor', colArea.(nm), 'MarkerEdgeColor', colArea.(nm));
+            handles = [handles, h];          %#ok<AGROW>
+            etichette = [etichette, nm];     %#ok<AGROW>
         end
 
+        xticks(ks);
+        xlim([0, max(ks) + 4]);
+        ylim(ylimComuni);
+        xlabel('k', 'FontWeight', 'bold');
+        ylabel('NCD', 'FontWeight', 'bold');
+        title(sprintf('Subject %s - %s - PPMd-H', sid, statoLabel), 'FontWeight', 'bold');
+        legend(handles, etichette, 'Location', 'northeast');
+        set(gca, 'FontSize', 11, 'LineWidth', 1.1);
+        ax = gca; ax.XAxis.FontWeight = 'bold'; ax.YAxis.FontWeight = 'bold';
 
-        confronto = ...
-            sprintf( ...
-                '%s > %s', ...
-                areaHigh, ...
-                areaLow);
-
-
-        riga = table( ...
-            {currentState}, ...
-            {confronto}, ...
-            n, ...
-            W, ...
-            p, ...
-            md, ...
-            'VariableNames', ...
-            { ...
-            'State', ...
-            'Comparison', ...
-            'n', ...
-            'SignedRank', ...
-            'p_value', ...
-            'median_difference'});
-
-
-        stats_sleep = [ ...
-            stats_sleep; ...
-            riga]; %#ok<AGROW>
-
+        if salvaFigure
+            exportgraphics(fig, fullfile(cartellaFig, sprintf('NCD_subject_%s_%s.png', statoLabel, sid)), ...
+                           'Resolution', 200);
+        end
     end
 
+    subjectTables.(statoLabel) = tabella_soggetti;
+    stats_sleep = [stats_sleep; tabella_statistiche]; %#ok<AGROW>
+    tab_tutti_sleep = [tab_tutti_sleep; tab_tutti]; %#ok<AGROW>
+    if ~isempty(riepilogo)
+        riepilogo.Stato = repmat(string(statoLabel), height(riepilogo), 1);
+        riepilogo_sleep = [riepilogo_sleep; riepilogo]; %#ok<AGROW>
+    end
 end
 
-
-fprintf('\n');
-fprintf('====================================================\n');
-fprintf('WILCOXON TRA AREE - k = %d\n',k_stat);
-fprintf('====================================================\n');
-
+fprintf('\n--- STATISTICHE TRA AREE (tutti gli stati) ---\n');
 disp(stats_sleep);
+fprintf('\n--- STATISTICHE ESPLORATIVE PER TUTTI I k (senza correzione) ---\n');
+disp(tab_tutti_sleep);
+fprintf('\n--- MEDIANA E IQR PER STATO E AREA ---\n');
+disp(riepilogo_sleep);
 
-
-%% ============================================================
-% WILCOXON TRA FASI DEL SONNO
-%
-% REM > N2
-% N2  > N3
-%
-% PER:
-% M1
-% S1
-% A1
-%
-% PAIRED
-% ONE-TAILED
-%% ============================================================
-
+%% --- CONFRONTI TRA FASI DEL SONNO (analoghi al confronto Awake > REM) ---
+% Test appaiati a una coda, mantenuti dal precedente run del sonno.
+% Le analisi tra aree, invece, sono a due code come nella veglia.
 stageStats = table();
-
-
-stageComparisons = { ...
-    'REM','N2'; ...
-    'N2','N3'};
-
-
+stageComparisons = {'REM','N2'; 'N2','N3'};
 for a = 1:numel(areas)
-
-    currentArea = areas{a};
-
-
+    nm = areas{a};
     for c = 1:size(stageComparisons,1)
-
-        stateHigh = ...
-            stageComparisons{c,1};
-
-
-        stateLow = ...
-            stageComparisons{c,2};
-
-
-        tabHigh = ...
-            subjectTables.(stateHigh);
-
-
-        tabLow = ...
-            subjectTables.(stateLow);
-
-
-        %% ====================================================
-        % ALLINEAMENTO SOGGETTI
-        %% ====================================================
-
-        [~,ia,ib] = ...
-            intersect( ...
-                tabHigh.SubjectID, ...
-                tabLow.SubjectID, ...
-                'stable');
-
-
-        X = ...
-            tabHigh.(currentArea)(ia);
-
-
-        Y = ...
-            tabLow.(currentArea)(ib);
-
-
-        mask = ...
-            ~isnan(X) & ...
-            ~isnan(Y);
-
-
-        X = X(mask);
-
-        Y = Y(mask);
-
-
-        n = ...
-            numel(X);
-
-
-        p = NaN;
-
-        md = NaN;
-
-
-        %% ====================================================
-        % WILCOXON
-        %% ====================================================
-
+        stateHigh = stageComparisons{c,1};
+        stateLow = stageComparisons{c,2};
+        tabHigh = subjectTables.(stateHigh);
+        tabLow = subjectTables.(stateLow);
+        [~,ia,ib] = intersect(tabHigh.SoggettoID, tabLow.SoggettoID, 'stable');
+        X = tabHigh.(nm)(ia);
+        Y = tabLow.(nm)(ib);
+        mask = ~isnan(X) & ~isnan(Y);
+        X = X(mask); Y = Y(mask);
+        n = numel(X);
+        p = NaN; Z = NaN; md = NaN;
         if n >= 3
-
-            p = ...
-                signrank( ...
-                    X, ...
-                    Y, ...
-                    'tail','right');
-
-
-            md = ...
-                median(X-Y);
-
+            [p,~,statW] = signrank(X, Y, 'tail','right');
+            if isfield(statW,'zval'), Z = statW.zval; end
+            md = median(X-Y);
         end
-
-
-        confronto = ...
-            sprintf( ...
-                '%s > %s', ...
-                stateHigh, ...
-                stateLow);
-
-
-        riga = table( ...
-            {currentArea}, ...
-            {confronto}, ...
-            n, ...
-            p, ...
-            md, ...
-            'VariableNames', ...
-            { ...
-            'Area', ...
-            'Comparison', ...
-            'n', ...
-            'p_value', ...
-            'median_difference'});
-
-
-        stageStats = [ ...
-            stageStats; ...
-            riga]; %#ok<AGROW>
-
+        stageStats = [stageStats; table(string(nm), ...
+            string([stateHigh ' > ' stateLow]), n, p, Z, md, ...
+            'VariableNames',{'Area','Comparison','n','p_value','Z','median_difference'})]; %#ok<AGROW>
     end
-
 end
-
-
-fprintf('\n');
-fprintf('====================================================\n');
-fprintf('WILCOXON TRA FASI DEL SONNO - k = %d\n',k_stat);
-fprintf('====================================================\n');
-
+fprintf('\n--- WILCOXON TRA FASI DEL SONNO (k = %d, una coda) ---\n', k_stat);
 disp(stageStats);
 
-
-%% ============================================================
-% FUNZIONE LOCALE:
-% TABELLA PER SOGGETTO
-%% ============================================================
-
-function tab = build_subject_table_sleep( ...
-    T, ...
-    stateName, ...
-    idx_k)
-
-% Costruisce:
-%
-% SubjectID | A1 | M1 | S1
-%
-% Per ogni soggetto:
-% MEDIA tra i canali della stessa area
-% al k selezionato.
-
-    %% --------------------------------------------------------
-    % SOLO STATO RICHIESTO
-    %% --------------------------------------------------------
-
-    idxState = ...
-        strcmp( ...
-            T.State, ...
-            stateName);
-
-
-    Ts = ...
-        T(idxState,:);
-
-
-    %% --------------------------------------------------------
-    % SOGGETTI
-    %% --------------------------------------------------------
-
-    soggetti_unici = ...
-        unique( ...
-            Ts.SubjectID, ...
-            'stable');
-
-
-    tab = table( ...
-        soggetti_unici, ...
-        'VariableNames', ...
-        {'SubjectID'});
-
-
-    tab.A1 = ...
-        NaN(height(tab),1);
-
-
-    tab.M1 = ...
-        NaN(height(tab),1);
-
-
-    tab.S1 = ...
-        NaN(height(tab),1);
-
-
-    %% --------------------------------------------------------
-    % LOOP SOGGETTI
-    %% --------------------------------------------------------
-
+%% ===================== FUNZIONI LOCALI =====================
+function tab = build_subject_table(T, idx_k)
+% media per soggetto e per area del valore NCD all'indice idx_k
+    soggetti_unici = unique(T.SoggettoID, 'stable');
+    tab = table(soggetti_unici, 'VariableNames', {'SoggettoID'});
+    tab.A1 = NaN(height(tab), 1);
+    tab.M1 = NaN(height(tab), 1);
+    tab.S1 = NaN(height(tab), 1);
     for i = 1:height(tab)
-
-        sid = ...
-            tab.SubjectID{i};
-
-
-        %% ----------------------------------------------------
-        % LOOP AREE
-        %% ----------------------------------------------------
-
+        sid = tab.SoggettoID{i};
         for area = {'A1','M1','S1'}
-
-            nm = ...
-                area{1};
-
-
-            idx = ...
-                strcmp( ...
-                    Ts.SubjectID, ...
-                    sid) & ...
-                strcmp( ...
-                    Ts.Area, ...
-                    nm);
-
-
+            idx = strcmp(T.SoggettoID, sid) & strcmp(T.Area, area{1});
             if any(idx)
-
-                valori = cellfun( ...
-                    @(x) x(idx_k), ...
-                    Ts.NCD_vs_K(idx));
-
-
-                tab.(nm)(i) = ...
-                    mean( ...
-                        valori, ...
-                        'omitnan');
-
+                valori = cellfun(@(x) x(idx_k), T.NCD_vs_K(idx));
+                tab.(area{1})(i) = mean(valori, 'omitnan');
             end
-
         end
-
     end
+end
 
+function tabS = stats_table(tab, statoLabel)
+% Wilcoxon signed-rank (approssimato) tra aree, appaiato per soggetto
+    Stato     = repmat(string(statoLabel), 3, 1);
+    Confronto = ["S1_vs_A1"; "M1_vs_S1"; "M1_vs_A1"];
+    Area1     = ["S1"; "M1"; "M1"];
+    Area2     = ["A1"; "S1"; "A1"];
+    n = zeros(3,1); W = NaN(3,1); p_value = NaN(3,1); Z = NaN(3,1);
+    effect_size_r = NaN(3,1); mediana_diff = NaN(3,1);
+
+    for c = 1:3
+        X = tab.(char(Area2(c)));
+        Y = tab.(char(Area1(c)));
+        mask = ~isnan(X) & ~isnan(Y);
+        Xv = X(mask); Yv = Y(mask);
+        n(c) = numel(Xv);
+        if n(c) >= 3
+            [p_val, ~, st] = signrank(Yv, Xv, 'method', 'approximate', 'tail', 'both');
+            p_value(c) = p_val;
+            if isfield(st, 'signedrank'), W(c) = st.signedrank; end
+            if isfield(st, 'zval'),       Z(c) = st.zval;       end
+            if ~isnan(Z(c)), effect_size_r(c) = abs(Z(c)) / sqrt(n(c)); end
+            mediana_diff(c) = median(Yv - Xv);
+        end
+    end
+    tabS = table(Stato, Confronto, Area1, Area2, n, W, p_value, Z, effect_size_r, mediana_diff);
 end
