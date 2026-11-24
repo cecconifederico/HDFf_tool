@@ -119,7 +119,7 @@ Further information is available in [Results structure](results/README.md).
 Detailed documentation is available in the `docs/` folder:
 
 - [Input format](docs/input_format.md)
-- [Algorithm and pseudocode](docs/pseudocode.md)
+- [Pseudocode](docs/pseudocode.md)
 - [Usage](docs/usage.md)
 
 The output data structures are described in [Results structure](results/README.md).
