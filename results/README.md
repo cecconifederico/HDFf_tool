@@ -98,17 +98,17 @@ For each recording channel, the signal is divided into valid segments. The NCD i
 
 The computational procedure includes:
 
-1. **Anti-aliasing filtering:** A seventh-order causal Butterworth low-pass filter is applied before subsampling.
+1. **Anti-aliasing filtering:** A seventh-order causal Butterworth low-pass filter is applied to the original signal before subsampling.
 
 2. **Subsampling:** The filtered signal is downsampled according to the selected subsampling factor `k`.
 
-3. **Temporal base restoration:** When `riportaBase = true`, each downsampled sample is repeated `k` times and the resulting sequence is truncated to restore the original signal length.
+3. **Temporal representation:** The downsampled signal is retained at its reduced sampling rate without restoring the original temporal grid (`riportaBase = false`). Consequently, the original and downsampled signals have different lengths.
 
-4. **Signal quantization:** The original and processed signals are independently standardized using z-score normalization, clipped at ±4 standard deviations, and quantized using 3 bits (8 levels).
+4. **Signal quantization:** The original and downsampled signals are independently standardized using z-score normalization, clipped at ±4 standard deviations, and quantized using 3 bits (8 levels).
 
 5. **Compression:** The quantized signals and their concatenation are compressed using the PPMd compressor (variant H, maximum order 6).
 
-6. **NCD computation:** The Normalized Compression Distance is computed from the compressed sizes of the original signal, the processed signal, and their concatenation.
+6. **NCD computation:** The Normalized Compression Distance is computed from the compressed sizes of the original signal, the downsampled signal, and their concatenation.
 
 7. **Channel-level aggregation:** For each subsampling factor, the median NCD value across valid segments is calculated and stored in `NCD_vs_K`.
 
@@ -124,28 +124,32 @@ Unlike the HFDf approach, HFDncd does not involve a log-log regression or a dire
 
 ## 5. Analysis Parameters & Saved Variables
 
-In addition to the primary output table, the awake MATLAB output file `NCDf_totale_curves.mat` contains the analysis parameters used for the NCD computation.
+For wakefulness recordings, the primary output table `NCDf_totale_1` is saved in the following MATLAB file:
 
-The following parameters define the reference computational configuration:
+```text
+NCDf_totale_curves.mat
+```
 
-| Variable | Description | Default Value |
+The reference computational configuration for both wakefulness and sleep is defined by the following parameters:
+
+| Variable | Description | Reference Value |
 | --- | --- | --- |
 | `ks` | Subsampling factors | `[2, 5, 10, 20, 33, 67]` |
 | `fc_Hz` | Butterworth low-pass cutoff frequencies (Hz) | `[35, 14, 7, 3.5, 2, 1]` |
 | `n_bits` | Number of quantization bits | `3` |
-| `riportaBase` | Restoration of the original signal length | `true` |
+| `riportaBase` | Restoration of the original temporal grid | `false` |
 | `Fs` | Original sampling frequency (Hz) | `200` |
 
-The correspondence between subsampling factors and cutoff frequencies is reported below:
+The correspondence between subsampling factors, cutoff frequencies, and sampling frequencies after subsampling is reported below:
 
-| Subsampling Factor (k) | Cutoff Frequency (Hz) |
-| --- | --- |
-| 2 | 35 |
-| 5 | 14 |
-| 10 | 7 |
-| 20 | 3.5 |
-| 33 | 2 |
-| 67 | 1 |
+| Subsampling Factor (k) | Cutoff Frequency (Hz) | Reduced Sampling Frequency (Hz) |
+| --- | --- | --- |
+| 2 | 35 | 100 |
+| 5 | 14 | 40 |
+| 10 | 7 | 20 |
+| 20 | 3.5 | 10 |
+| 33 | 2 | 6.06 |
+| 67 | 1 | 2.99 |
 
 These parameters ensure traceability and reproducibility of the computed NCD curves.
 
@@ -157,9 +161,9 @@ The pipeline provides channel-level and subject-level NCD values that can be use
 
 The analysis includes:
 
-- NCD curves across subsampling factors for individual channels.
+- NCD curves across subsampling factors for individual recording channels.
 - Subject-specific NCD curves for each cortical area.
-- Mean NCD curves and standard deviations.
+- Mean NCD curves and standard deviations for each cortical area.
 - Subject-level NCD values at the reference subsampling factor (`k = 2`).
 - Within-subject scatter plots comparing cortical areas.
 - Paired Wilcoxon signed-rank tests.
@@ -181,12 +185,19 @@ These comparisons can be conducted separately for each vigilance state:
 - N3
 - REM
 
+Subject-level NCD values are obtained by averaging the NCD values across recording channels belonging to the same subject and cortical area.
+
 ### Vigilance State Comparisons
 
-The subject-level NCD values can also be used to investigate differences between vigilance states within the same cortical area.
+Subject-level NCD values can also be used to investigate differences between vigilance states within the same cortical area.
 
 The reference subsampling factor for statistical analysis is `k = 2`.
 
+Additional exploratory statistical comparisons can be performed across all six subsampling factors, without correction for multiple comparisons.
+
+Statistical tables are generated in the MATLAB workspace and are not automatically included in the primary output file by the awake run script.
+
+Subject-specific figures can optionally be exported as PNG files.
 Additional exploratory statistical comparisons can be performed across all six subsampling factors.
 
 Statistical tables are generated in the MATLAB workspace and are not automatically included in the primary output file by the awake run script.
