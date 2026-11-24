@@ -20,7 +20,7 @@ Install the pyppmd library by executing the following command in the system term
 python -m pip install pyppmd
 ```
 
-Open MATLAB and check the Python environment:
+Open MATLAB and check the configured Python environment:
 
 ```matlab
 pyenv
@@ -31,6 +31,10 @@ If necessary, configure MATLAB to use the Python executable corresponding to the
 ```matlab
 pyenv('Version', 'path_to_python_executable')
 ```
+
+Replace the placeholder with the actual path to the Python executable.
+
+Configure the Python environment before using Python in MATLAB. Restart MATLAB if necessary.
 
 Verify that the pyppmd library can be imported correctly:
 
@@ -48,7 +52,7 @@ Add the `src` folder to the MATLAB path:
 addpath('src')
 ```
 
-## Run the wakefulness analysis
+## Run the Wakefulness Analysis
 
 To run the wakefulness analysis, execute:
 
@@ -66,11 +70,11 @@ M1_rep.xlsx
 S1_rep.xlsx
 ```
 
-The script supports both `.csv` and `.xlsx` input files.
+Both `.csv` and `.xlsx` files are supported.
 
 Each file contains the recording channels associated with the corresponding cortical area.
 
-## Run the sleep-state analysis
+## Run the Sleep-State Analysis
 
 To run the sleep-state analysis, execute:
 
@@ -80,45 +84,66 @@ run_HFDncd_sleep
 
 When prompted, select the folder containing the sleep-state input files.
 
-The script automatically searches for files according to cortical area and sleep stage.
+The script automatically searches the selected folder for files according to cortical area and sleep stage.
 
 The expected file naming convention is:
 
 ```text
-A1_N2*.csv
-A1_N3*.csv
-A1_REM*.csv
+A1_N2.csv
+M1_N2.csv
+S1_N2.csv
 
-M1_N2*.csv
-M1_N3*.csv
-M1_REM*.csv
+A1_N3.csv
+M1_N3.csv
+S1_N3.csv
 
-S1_N2*.csv
-S1_N3*.csv
-S1_REM*.csv
+A1_REM.csv
+M1_REM.csv
+S1_REM.csv
 ```
 
 Both `.csv` and `.xlsx` files are supported.
 
-The wildcard character `*` allows additional characters in the file name after the sleep-stage identifier.
+Additional characters after the sleep-stage identifier are accepted, for example:
 
-The script processes all matching files for each combination of cortical area and sleep stage.
+```text
+A1_N2_rep.csv
+```
 
-The sleep stages considered are:
+All matching files in the selected folder are processed. Avoid including duplicate copies of the same recording channels.
+
+Missing area-stage combinations are skipped with a warning.
+
+The same computational procedure is applied separately to each sleep stage:
 
 - N2: Non-REM sleep stage 2.
 - N3: Non-REM sleep stage 3.
 - REM: Rapid Eye Movement sleep.
 
-The expected input format is described in:
+The expected input format for both analyses is described in [Input format](input_format.md).
+
+## Execution Order
+
+The wakefulness script includes an Awake–REM statistical comparison and loads the sleep-state output file:
 
 ```text
-docs/input_format.md
+HFDncd_sleep.mat
 ```
+
+Therefore, when performing the complete analysis, execute the sleep-state script before the wakefulness script:
+
+```matlab
+run_HFDncd_sleep
+run_HFDncd_awake
+```
+
+Both scripts should be executed using the same MATLAB working directory.
+
+For wakefulness-only analysis, the Awake–REM comparison section can be disabled.
 
 ## Parameters
 
-The main parameters used for both wakefulness and sleep-state analyses are:
+Both run scripts use the same reference computational parameters:
 
 ```matlab
 Fs = 200;
@@ -138,7 +163,7 @@ k_stat = 2;
 | `n_bits` | Number of quantization bits. |
 | `riportaBase` | Flag controlling restoration of the original temporal grid after subsampling. |
 | `minSegLen` | Segment length threshold in samples. Only segments longer than this threshold are processed. |
-| `k_stat` | Reference subsampling factor used for statistical analysis. |
+| `k_stat` | Reference subsampling factor used for statistical analysis. Must be included in `ks`. |
 
 The following computational parameters are defined in the core functions:
 
@@ -146,53 +171,57 @@ The following computational parameters are defined in the core functions:
 | --- | --- |
 | Butterworth filter order | 7 |
 | Filtering mode | Causal, single pass |
-| Normalization | Z-score |
-| Clipping threshold | +/- 4 standard deviations |
+| Normalization | Independent z-score |
+| Clipping threshold | ±4 standard deviations |
 | Quantization levels | 8 |
 | PPMd variant | H |
 | Maximum context order | 6 |
 
+When `riportaBase = false`, the downsampled signal is retained at its reduced sampling rate without restoring the original temporal grid.
+
 These parameters can be modified directly in the MATLAB scripts and core functions if needed.
 
-When `riportaBase = false`, the downsampled signal is retained at its reduced sampling rate without restoring the original temporal grid.
+The same computational configuration must be used for all vigilance states when comparing their NCD values.
+
+If the parameters are changed, regenerate the corresponding output files before performing between-state comparisons.
 
 ## Output
 
 The scripts save the computed NCD curves and the corresponding analysis parameters as MATLAB `.mat` files in the current working directory.
 
-### Wakefulness analysis
+### Wakefulness Analysis
 
 The output file is:
 
 ```text
-NCDf_totale_curves.mat
+HFDncd_awake.mat
 ```
 
 The primary MATLAB table is:
 
 ```text
-NCDf_totale_1
+HFDncd_awake
 ```
 
-The table contains one row for each valid recording channel and seven columns describing the channel metadata and the corresponding NCD values.
+The table contains one row for each retained recording channel and seven columns describing the channel metadata and the corresponding NCD values.
 
-### Sleep-state analysis
+### Sleep-State Analysis
 
 The output file is:
 
 ```text
-NCDppmdH_sleep_noBase.mat
+HFDncd_sleep.mat
 ```
 
 The primary MATLAB table is:
 
 ```text
-NCDppmdH_sleep_noBase
+HFDncd_sleep
 ```
 
-The table contains one row for each valid recording channel processed from the input files and nine columns describing the channel metadata, sleep stage, source file, and corresponding NCD values.
+The table contains one row for each retained recording channel and nine columns describing the channel metadata, sleep stage, source file and corresponding NCD values.
 
-For both wakefulness and sleep-state analyses, the NCD values are computed independently for each valid signal segment.
+For both analyses, NCD values are computed independently for each valid signal segment.
 
 The median NCD value across valid segments is calculated for each subsampling factor and stored in the corresponding channel-level output.
 
@@ -206,66 +235,68 @@ riportaBase
 Fs
 ```
 
-Further details about the output data structures are available in:
+The output files can be loaded into MATLAB using:
 
-```text
-results/README.md
+```matlab
+load('HFDncd_awake.mat');
+load('HFDncd_sleep.mat');
 ```
+
+Further information about the output data structures is available in [Results structure](../results/README.md).
 
 ## Statistical Analysis and Visualization
 
-The scripts generate graphical and statistical outputs for the investigation of neurodynamic differences across cortical areas and vigilance states.
+The same within-state statistical procedure is applied separately to Awake, N2, N3 and REM.
 
-### Wakefulness analysis
+The analysis includes:
 
-The wakefulness analysis includes:
-
-- Channel-level NCD curves.
-- Subject-specific NCD curves.
-- Mean NCD curves and standard deviations across channels.
-- Within-subject scatter plots comparing cortical areas.
-- Paired Wilcoxon signed-rank tests.
-- Effect size estimates.
-- Median and interquartile range (IQR).
-- Exploratory statistical comparisons across all subsampling factors.
-
-### Sleep-state analysis
-
-The sleep-state analysis includes:
-
-- Subject-level NCD tables for N2, N3, and REM.
-- Mean NCD curves and standard deviations across subjects for each cortical area and sleep stage.
+- Example channel-level and subject-specific NCD curves.
+- Mean NCD curves and standard deviations across recording channels.
+- Subject-level NCD values obtained by averaging channels within each subject and cortical area.
+- Subject-level mean and standard deviation at the reference subsampling factor.
 - Within-subject scatter plots comparing cortical areas.
 - Channel-level median and interquartile range (IQR).
-- One-tailed paired Wilcoxon signed-rank tests between cortical areas.
-- One-tailed paired Wilcoxon signed-rank tests between sleep stages.
+- Two-tailed paired Wilcoxon signed-rank tests using the approximate method.
+- Effect size estimates.
+- Exploratory statistical comparisons across all subsampling factors.
 
-The cortical area comparisons are performed separately for each sleep stage:
+The cortical area comparisons are:
 
-- M1 > S1
-- M1 > A1
-- S1 > A1
+- S1 vs A1.
+- M1 vs S1.
+- M1 vs A1.
 
-The sleep-stage comparisons are performed separately for each cortical area:
+The effect size is calculated as:
 
-- REM > N2
-- N2 > N3
+$$
+r=\frac{|Z|}{\sqrt{n}}
+$$
 
-The reference subsampling factor for statistical analysis is `k = 2`.
+The primary statistical comparisons are performed at `k_stat = 2`, when at least three paired observations are available.
 
-Subject-level NCD values are obtained by averaging the NCD values across recording channels belonging to the same subject, cortical area, and vigilance state.
+Additional exploratory comparisons are performed for all subsampling factors without correction for multiple comparisons.
+
+Subject-specific figures can optionally be exported as PNG files by setting:
+
+```matlab
+salvaFigure = true;
+```
+
+## Between-State Comparisons
+
+Additional one-tailed paired Wilcoxon signed-rank tests are performed separately for each cortical area.
+
+The directional comparisons are:
+
+- Awake > REM.
+- REM > N2.
+- N2 > N3.
+
+Subjects are matched across vigilance states using their anonymized subject identifiers.
+
+The Awake–REM comparison requires the previously generated `HFDncd_sleep.mat` output file.
 
 The statistical tables are generated in the MATLAB workspace and are not automatically saved in the primary output files.
-
-### Awake-REM comparison
-
-If the Awake-REM comparison section is retained in the wakefulness script, the sleep-state analysis must be executed first.
-
-The file `NCDppmdH_sleep_noBase.mat` must be available in the current working directory.
-
-The comparison is performed within subjects and separately for each cortical area using a one-tailed paired Wilcoxon signed-rank test.
-
-Both analyses must use the same computational parameters.
 
 ## Algorithm
 
@@ -287,8 +318,4 @@ Unlike HFDf, HFDncd does not involve log-log regression or direct estimation of 
 
 The output consists of NCD values computed at different subsampling factors.
 
-A detailed description of the algorithm and its pseudocode is available in:
-
-```text
-docs/pseudocode.md
-```
+A detailed description of the algorithm and its pseudocode is available in [Algorithmic specification](pseudocode.md).
