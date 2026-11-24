@@ -1,4 +1,4 @@
-# HDFncd_tool
+# HFDncd_tool
 
 
 This branch contains MATLAB code implementing a Higuchi-based approach using the Normalized Compression Distance (NCD), referred to as HFDncd.
@@ -10,7 +10,7 @@ The tool is designed for the analysis of sEEG signals from different cortical ar
 ## Repository structure
 
 ```text
-HDFncd_tool/
+HFDncd_tool/
 ├── README.md
 ├── LICENSE
 ├── docs/
