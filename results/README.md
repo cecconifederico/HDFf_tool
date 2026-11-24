@@ -8,8 +8,8 @@ The two run scripts use the same NCD computation and within-state statistical pr
 
 | Analysis | Output File | MATLAB Table | Expected Dimensions |
 | --- | --- | --- | --- |
-| Awake | `NCDf_totale_curves.mat` | `NCDf_totale_1` | 47 × 7 |
-| Sleep | `NCDppmdH_sleep_noBase.mat` | `NCDppmdH_sleep_noBase` | 101 × 9 |
+| Awake | `HFDncd_awake.mat` | `HFDncd_awake` | 47 × 7 |
+| Sleep | `HFDncd_sleep.mat` | `HFDncd_sleep` | 101 × 9 |
 
 The expected dimensions refer to the reference datasets, assuming that all recording channels yield valid NCD results and no duplicates are processed.
 
@@ -19,7 +19,7 @@ Both files are saved in the current MATLAB working directory.
 
 ## 1. Table Dimensions & Row Segmentation
 
-### A. Awake State Table (`NCDf_totale_1`)
+### A. Awake State Table (`HFDncd_awake`)
 
 The wakefulness table is expected to contain 47 rows, corresponding to the recording channels distributed across three cortical areas:
 
@@ -30,7 +30,7 @@ The wakefulness table is expected to contain 47 rows, corresponding to the recor
 | S1 (Primary Somatosensory Cortex) | 17 | 31–47 |
 | **Total** | **47** | |
 
-### B. Sleep State Table (`NCDppmdH_sleep_noBase`)
+### B. Sleep State Table (`HFDncd_sleep`)
 
 The sleep table is expected to contain 101 rows, distributed across three sleep stages (N2, N3 and REM) and three cortical areas.
 
@@ -65,7 +65,7 @@ The metadata columns should be used rather than fixed row indices to select spec
 
 ## 2. Output Data Table Schema
 
-### A. Wakefulness Table (`NCDf_totale_1`)
+### A. Wakefulness Table (`HFDncd_awake`)
 
 The wakefulness output table contains seven columns:
 
@@ -79,7 +79,7 @@ The wakefulness output table contains seven columns:
 | `NCD_vs_K` | `cell` containing a `double` vector | Median NCD across valid segments for each subsampling factor. | `[NCD(k=2), ..., NCD(k=67)]` |
 | `K_range` | `cell` containing a `double` vector | Subsampling factors used in the analysis. | `[2, 5, 10, 20, 33, 67]` |
 
-### B. Sleep Table (`NCDppmdH_sleep_noBase`)
+### B. Sleep Table (`HFDncd_sleep`)
 
 The sleep output table contains nine columns:
 
@@ -182,7 +182,7 @@ All compressed sizes are expressed in bytes.
 - Segments without finite NCD values are excluded.
 - NaN values are omitted during median aggregation.
 - Channels without valid NCD curves are excluded from the output table.
-- Duplicate sleep-channel records are flagged by warnings but are not automatically removed.
+- Duplicate sleep-channel records should be avoided.
 
 Unlike the HFDf approach, HFDncd does not involve log-log linear regression or direct estimation of fractal dimension. Therefore, no regression-based R² quality threshold is applied.
 
@@ -192,7 +192,7 @@ The NCD values are not explicitly constrained to the interval [0, 1]. Values out
 
 ## 5. Analysis Parameters & Saved Variables
 
-Both MATLAB output files contain the corresponding channel-level NCD table and the following computational parameters:
+Both MATLAB output files (`HFDncd_awake.mat` and `HFDncd_sleep.mat`) contain the corresponding channel-level NCD table and the following computational parameters:
 
 | Variable | Description | Reference Value |
 | --- | --- | --- |
@@ -324,7 +324,7 @@ Subjects are matched across vigilance states using their anonymized subject iden
 The Awake–REM comparison is implemented in the wakefulness script and requires the following sleep-state output file:
 
 ```text
-NCDppmdH_sleep_noBase.mat
+HFDncd_sleep.mat
 ```
 
 The REM–N2 and N2–N3 comparisons are implemented in the sleep-state script.
