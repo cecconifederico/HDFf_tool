@@ -39,7 +39,7 @@ function [Lk, info] = ncd_ppmd_bt(X, ks, n_bits, Fs, fc_Hz, reportBase)
     if nargin < 3 || isempty(n_bits),     n_bits = 3; end
     if nargin < 4 || isempty(Fs),         Fs = 200; end
     if nargin < 5 || isempty(fc_Hz),      fc_Hz = [35 14 7 3.5 2 1]; end
-    if nargin < 6 || isempty(reportBase), reportBase = true; end
+    if nargin < 6 || isempty(reportBase), reportBase = false; end
 
     if numel(fc_Hz) ~= numel(ks)
         error('ncd_ppmd_bt: fc_Hz must have the same length as ks.');
