@@ -1,4 +1,4 @@
-# HDFf_tool
+# HDFncd_tool
 
 This repository contains MATLAB code for the computation of a Higuchi-like Fractal Dimension modified with the discrete Frechet distance, referred to as HFDf.
 
@@ -7,7 +7,7 @@ The tool is designed for the analysis of sEEG signals from different cortical ar
 ## Repository structure
 
 ```text
-HDFf_tool/
+HDFncd_tool/
 ├── README.md
 ├── LICENSE
 ├── docs/
@@ -18,8 +18,8 @@ HDFf_tool/
 │   └── README.md
 └── src/
     ├── fractaldim_frechet.m
-    ├── run_HFDf_awake.m
-    └── run_HFDf_sleep.m
+    ├── run_HFDncd_awake.m
+    └── run_HFDncd_sleep.m
 ```
 
 ## Main files
