@@ -6,9 +6,9 @@ The method uses the Prediction by Partial Matching compressor (PPMd, variant H) 
 
 Unlike HFDf, the method returns NCD values at each subsampling factor rather than a fractal dimension estimated by log-log regression.
 
-The tool is designed for the analysis of stereo-electroencephalographic (sEEG) signals from different cortical areas and vigilance states. Both run scripts apply the same core computational procedure and the same within-state analysis to wakefulness and sleep recordings (N2, N3 and REM).
+The tool is designed for the analysis of stereo-electroencephalographic (sEEG) signals from different cortical areas and vigilance states. Both run scripts apply the same core computational procedure and within-state statistical analysis to wakefulness and sleep recordings (N2, N3 and REM).
 
-## Repository structure
+## Repository Structure
 
 ```text
 HDFf_tool/
@@ -27,7 +27,7 @@ HDFf_tool/
     └── run_HFDncd_sleep.m
 ```
 
-## Main files
+## Main Files
 
 - `src/ncd_ppmd_bt.m`: main MATLAB function used to compute NCD across subsampling factors using the PPMd compressor.
 - `src/bw_lowpass_causal.m`: MATLAB function implementing a causal Butterworth low-pass filter before subsampling.
@@ -48,6 +48,13 @@ The analysis focuses on three primary cortical areas:
 - M1: Primary motor cortex.
 - S1: Primary somatosensory cortex.
 
+The vigilance states considered are:
+
+- Awake.
+- N2.
+- N3.
+- REM.
+
 Further details about the expected input format are available in [Input format](docs/input_format.md).
 
 ## Requirements
@@ -66,9 +73,29 @@ python -m pip install pyppmd
 
 ## Usage
 
-Add the `src` folder to the MATLAB path and configure the Python environment.
+Open MATLAB and set the main repository folder as the current working directory.
 
-Run the sleep analysis first if the Awake–REM comparison is required by the wakefulness script.
+Add the `src` folder to the MATLAB path:
+
+```matlab
+addpath('src')
+```
+
+Configure the Python environment and verify that the pyppmd library is available.
+
+To run the wakefulness analysis:
+
+```matlab
+run_HFDncd_awake
+```
+
+To run the sleep-state analysis:
+
+```matlab
+run_HFDncd_sleep
+```
+
+Run the sleep-state analysis first when performing the complete analysis, including the Awake–REM comparison.
 
 The reference configuration uses `riportaBase = false` for all vigilance states. The downsampled signal is retained at its reduced sampling rate without restoring its original length.
 
@@ -78,8 +105,10 @@ Detailed instructions are available in [Usage](docs/usage.md).
 
 The scripts save the channel-level NCD curves and analysis parameters as MATLAB `.mat` files:
 
-- `NCDf_totale_curves.mat`: wakefulness results.
-- `NCDppmdH_sleep_noBase.mat`: sleep-state results.
+| Analysis | Output File | MATLAB Table |
+| --- | --- | --- |
+| Awake | `HFDncd_awake.mat` | `HFDncd_awake` |
+| Sleep | `HFDncd_sleep.mat` | `HFDncd_sleep` |
 
 The scripts also generate plots and statistical tables in the MATLAB workspace.
 
@@ -98,6 +127,8 @@ The output data structures are described in [Results structure](results/README.m
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE).
+
+The implementation relies on the external Python library pyppmd, which is distributed under its own license.
 
 The implementation relies on the external Python library pyppmd, which is distributed under its own license.
 
