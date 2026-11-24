@@ -10,7 +10,7 @@ The tool is designed for the analysis of sEEG signals from different cortical ar
 ## Repository structure
 
 ```text
-HDFf_tool/
+HDFncd_tool/
 ├── README.md
 ├── LICENSE
 ├── docs/
