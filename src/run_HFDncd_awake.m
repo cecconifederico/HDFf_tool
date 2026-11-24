@@ -12,7 +12,7 @@ Fs          = 200;                % Sampling frequency (Hz); EEG already low-pas
 ks          = [2 5 10 20 33 67];  % Decimation factors
 fc_Hz       = [35 14 7 3.5 2 1];  % Butterworth cutoff for each k (Hz)
 n_bits      = 3;                  % Quantization: 2^3 = 8 amplitude levels
-reportBase  = true;               % true: Q is mapped back to the time base of P
+reportBase  = false;              
 minSegLen   = 400;                % Minimum segment length (samples)
 
 K_range     = ks;
